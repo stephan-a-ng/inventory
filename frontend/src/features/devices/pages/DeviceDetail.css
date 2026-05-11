@@ -1,0 +1,560 @@
+/*
+ * DeviceDetail page — "Commissioning process" stage-tab layout.
+ * Ported from Claude Design handoff "Device details.html".
+ * All rules scoped under .device-details-page to avoid leakage.
+ */
+
+.device-details-page {
+  padding: 40px 48px 80px;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  color: var(--m5-ink);
+}
+
+.device-details-page button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.device-details-page a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── back link ── */
+.device-details-page .back {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--m5-muted);
+  margin-bottom: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.device-details-page .back:hover {
+  color: var(--m5-ink);
+}
+
+/* ── header strip ── */
+.device-details-page .strip {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 32px;
+  padding-bottom: 24px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--m5-rule);
+}
+.device-details-page .strip .lbl {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--m5-muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.device-details-page .strip .lbl .yb {
+  display: inline-block;
+  width: 22px;
+  height: 3px;
+  background: var(--m5-yellow);
+}
+.device-details-page .strip h1 {
+  margin: 0;
+  font-size: 52px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+}
+.device-details-page .strip .ident {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: right;
+  align-items: flex-end;
+}
+.device-details-page .strip .ident .ser {
+  font-family: var(--m5-font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.device-details-page .strip .ident .mac {
+  font-family: var(--m5-font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--m5-ink-soft);
+  letter-spacing: 0.04em;
+}
+.device-details-page .strip .ident .type {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid var(--m5-ink);
+  color: var(--m5-ink);
+}
+
+/* ── header actions (below ident) ── */
+.device-details-page .actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+.device-details-page .actions .btn {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--m5-rule);
+  background: var(--m5-cream);
+  color: var(--m5-ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.device-details-page .actions .btn:hover {
+  background: var(--m5-cream-deep);
+}
+.device-details-page .actions .btn-primary {
+  background: var(--m5-ink);
+  color: var(--m5-cream);
+  border-color: var(--m5-ink);
+}
+.device-details-page .actions .btn-primary:hover {
+  background: #1c1a16;
+}
+.device-details-page .actions .btn-primary .arr {
+  color: var(--m5-yellow);
+  display: inline-flex;
+}
+
+/* ── stage tabs ── */
+.device-details-page .stage-tabs {
+  display: grid;
+  grid-template-columns: repeat(var(--stage-count, 6), 1fr);
+  border: 1px solid var(--m5-rule);
+  background: var(--m5-cream);
+  margin-bottom: 32px;
+}
+.device-details-page .stage-tab {
+  padding: 18px;
+  border-right: 1px solid var(--m5-rule);
+  text-align: left;
+  position: relative;
+  background: var(--m5-cream);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.device-details-page .stage-tab:last-child {
+  border-right: none;
+}
+.device-details-page .stage-tab:hover {
+  background: var(--m5-cream-deep);
+}
+.device-details-page .stage-tab.active {
+  background: var(--m5-cream-deep);
+}
+.device-details-page .stage-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: var(--m5-yellow);
+}
+.device-details-page .stage-tab .num-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-family: var(--m5-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--m5-muted);
+}
+.device-details-page .stage-tab .pip {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--m5-rule);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--m5-muted);
+  flex-shrink: 0;
+}
+.device-details-page .stage-tab.done .pip {
+  background: var(--m5-green);
+  border-color: var(--m5-green);
+  color: var(--m5-cream);
+}
+.device-details-page .stage-tab.current .pip {
+  background: var(--m5-yellow);
+  border-color: var(--m5-yellow);
+  color: var(--m5-ink);
+}
+.device-details-page .stage-tab .name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.device-details-page .stage-tab.todo .name {
+  color: var(--m5-ink-soft);
+  font-weight: 600;
+}
+
+/* ── stage panel ── */
+.device-details-page .panel {
+  display: block;
+}
+
+.device-details-page .panel .head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--m5-rule);
+  gap: 24px;
+}
+.device-details-page .panel .head .l .step {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--m5-muted);
+  margin-bottom: 8px;
+}
+.device-details-page .panel .head .l h2 {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+.device-details-page .panel .head .r {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.device-details-page .status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border: 1px solid var(--m5-ink);
+  color: var(--m5-ink);
+}
+.device-details-page .status-chip.done {
+  background: var(--m5-green);
+  border-color: var(--m5-green);
+  color: var(--m5-cream);
+}
+.device-details-page .status-chip.current {
+  background: var(--m5-yellow);
+  border-color: var(--m5-yellow);
+  color: var(--m5-ink);
+}
+.device-details-page .status-chip.todo {
+  background: transparent;
+  border-color: var(--m5-rule);
+  color: var(--m5-muted);
+}
+.device-details-page .status-chip .pulse {
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  display: inline-block;
+  animation: device-details-pulse 1.4s ease-in-out infinite;
+}
+@keyframes device-details-pulse {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 1; }
+}
+
+/* ── meta strip ── */
+.device-details-page .meta-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--m5-rule);
+  background: var(--m5-cream);
+  margin-bottom: 28px;
+}
+.device-details-page .meta-strip .cell {
+  padding: 18px 22px;
+  border-right: 1px solid var(--m5-rule);
+}
+.device-details-page .meta-strip .cell:last-child {
+  border-right: none;
+}
+.device-details-page .meta-strip .cell .l {
+  font-family: var(--m5-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--m5-muted);
+  margin-bottom: 8px;
+}
+.device-details-page .meta-strip .cell .v {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.device-details-page .meta-strip .cell .v.mono {
+  font-family: var(--m5-font-mono);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  font-size: 17px;
+}
+.device-details-page .meta-strip .cell .v.muted {
+  color: var(--m5-muted);
+  font-weight: 500;
+}
+.device-details-page .meta-strip .cell .sub {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--m5-muted);
+  margin-top: 4px;
+}
+
+/* ── section block ── */
+.device-details-page .sec {
+  margin-bottom: 32px;
+}
+.device-details-page .sec .sh {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 16px;
+}
+.device-details-page .sec .sh h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+.device-details-page .sec .sh h3 .yb {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  background: var(--m5-yellow);
+  vertical-align: 4px;
+  margin-right: 10px;
+}
+.device-details-page .sec .sh .sub {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--m5-muted);
+}
+
+/* ── step / event list ── */
+.device-details-page .step-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--m5-rule);
+  background: var(--m5-cream);
+}
+.device-details-page .step-list li {
+  display: grid;
+  grid-template-columns: 22px 1fr auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--m5-rule);
+}
+.device-details-page .step-list li:last-child {
+  border-bottom: none;
+}
+.device-details-page .step-list .box {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--m5-rule);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--m5-cream);
+}
+.device-details-page .step-list .done .box {
+  background: var(--m5-green);
+  border-color: var(--m5-green);
+}
+.device-details-page .step-list .doing .box {
+  background: var(--m5-yellow);
+  border-color: var(--m5-yellow);
+  position: relative;
+}
+.device-details-page .step-list .doing .box::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: var(--m5-ink);
+  animation: device-details-pulse 1.4s ease-in-out infinite;
+}
+.device-details-page .step-list .todo .box {
+  background: var(--m5-cream);
+}
+.device-details-page .step-list .lbl {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.device-details-page .step-list .todo .lbl {
+  color: var(--m5-muted);
+}
+.device-details-page .step-list .when {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--m5-muted);
+}
+.device-details-page .step-list .meta {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--m5-muted);
+}
+.device-details-page .step-list .meta strong {
+  color: var(--m5-ink);
+  font-weight: 500;
+}
+
+/* ── pending empty state ── */
+.device-details-page .pending-box {
+  border: 1px dashed var(--m5-rule);
+  background: var(--m5-cream);
+  padding: 48px 32px;
+  text-align: center;
+}
+.device-details-page .pending-box .ic {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 14px;
+  color: var(--m5-muted);
+}
+.device-details-page .pending-box h4 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.device-details-page .pending-box p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--m5-muted);
+  font-family: var(--m5-font-mono);
+  letter-spacing: 0.06em;
+}
+
+/* ── note ── */
+.device-details-page .note {
+  background: var(--m5-cream-deep);
+  border-left: 3px solid var(--m5-yellow);
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--m5-ink-soft);
+  margin-bottom: 28px;
+}
+.device-details-page .note strong {
+  color: var(--m5-ink);
+  font-weight: 700;
+}
+
+/* ── board revisions (Assembly stage) ── */
+.device-details-page .rev-grid {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--m5-rule);
+  background: var(--m5-cream);
+}
+.device-details-page .rev-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--m5-rule);
+}
+.device-details-page .rev-row:last-child {
+  border-bottom: none;
+}
+.device-details-page .rev-row .sub-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.device-details-page .rev-input {
+  height: 32px;
+  border: 1px solid var(--m5-rule);
+  background: var(--m5-cream);
+  padding: 0 12px;
+  font-family: var(--m5-font-mono);
+  font-size: 12px;
+  color: var(--m5-ink);
+  outline: none;
+  min-width: 0;
+}
+.device-details-page .rev-input:focus {
+  border-color: var(--m5-ink);
+}
+.device-details-page .rev-input:disabled {
+  opacity: 0.5;
+}
+.device-details-page .rev-save {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--m5-rule);
+  background: var(--m5-cream);
+  color: var(--m5-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.device-details-page .rev-save:hover {
+  background: var(--m5-cream-deep);
+}
+
+/* ── loading / not-found ── */
+.device-details-page .loading,
+.device-details-page .not-found {
+  padding: 80px 0;
+  text-align: center;
+  font-family: var(--m5-font-mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--m5-muted);
+}
