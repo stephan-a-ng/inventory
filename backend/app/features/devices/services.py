@@ -66,7 +66,11 @@ class DeviceService:
 
     @staticmethod
     async def create_device(data: dict) -> dict:
-        product_type = str(data["product_type"])
+        # ProductType is a (str, Enum); .value yields the canonical "AEMS" etc.
+        # Plain str() returns "ProductType.AEMS" on Python 3.11+ (str-Enum __str__ change),
+        # which violates the devices_product_type_check constraint.
+        pt = data["product_type"]
+        product_type = pt.value if hasattr(pt, "value") else str(pt)
 
         # If no stage specified, assign the first stage for this product type
         if not data.get("current_stage_id"):
