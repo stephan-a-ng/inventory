@@ -138,6 +138,36 @@ class DeviceService:
         return result == "DELETE 1"
 
     @staticmethod
+    async def stats() -> dict:
+        """Total devices + count grouped by canonical stage name.
+
+        Stage names (Assembly, Firmware, …, Deployed) are shared across product
+        types but each product type has its own stage row. Group by name so the
+        dashboard shows one column per name, ordered by the stage's order.
+        """
+        total = await DatabasePool.fetchval("SELECT COUNT(*) FROM devices")
+        rows = await DatabasePool.fetch(
+            """SELECT cs.name AS name,
+                      MIN(cs."order") AS "order",
+                      COUNT(d.id) AS count
+               FROM commissioning_stages cs
+               LEFT JOIN devices d ON d.current_stage_id = cs.id
+               GROUP BY cs.name
+               ORDER BY MIN(cs."order"), cs.name"""
+        )
+        unstaged = await DatabasePool.fetchval(
+            "SELECT COUNT(*) FROM devices WHERE current_stage_id IS NULL"
+        )
+        return {
+            "total": total or 0,
+            "unstaged": unstaged or 0,
+            "by_stage_name": [
+                {"name": r["name"], "order": r["order"], "count": r["count"]}
+                for r in rows
+            ],
+        }
+
+    @staticmethod
     async def lookup_by_mac(mac_address: str) -> Optional[dict]:
         row = await DatabasePool.fetchrow(
             """SELECT d.*, cs.name as current_stage_name

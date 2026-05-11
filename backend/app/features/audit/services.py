@@ -23,6 +23,25 @@ class AuditService:
         )
 
     @staticmethod
+    async def list_recent(limit: int = 20) -> list[dict]:
+        """Most recent audit entries across all devices, joined with device + user."""
+        rows = await DatabasePool.fetch(
+            """SELECT al.*,
+                      u.email AS user_email,
+                      u.name AS user_name,
+                      d.mac_address AS device_mac,
+                      d.device_name AS device_name,
+                      d.product_type AS device_product_type
+               FROM audit_log al
+               LEFT JOIN users u ON al.user_id = u.id
+               LEFT JOIN devices d ON al.device_id = d.id
+               ORDER BY al.created_at DESC
+               LIMIT $1""",
+            limit,
+        )
+        return [dict(r) for r in rows]
+
+    @staticmethod
     async def get_device_audit(device_id: UUID) -> list[dict]:
         rows = await DatabasePool.fetch(
             """SELECT al.*, u.email as user_email, u.name as user_name

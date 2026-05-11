@@ -121,6 +121,82 @@ async def test_bulk_import_imports_valid_rows_and_reports_errors(client, auth_us
     assert any("Invalid MAC" in e for e in body["errors"])
 
 
+async def test_stats_returns_total_and_per_stage(client, auth_user):
+    """/api/devices/stats rolls up devices by canonical stage name."""
+    user, token = await auth_user("admin")
+    client.cookies.set("auth_token", token)
+
+    # Empty fleet still returns one entry per stage with count=0.
+    r0 = await client.get("/api/devices/stats")
+    assert r0.status_code == 200
+    body0 = r0.json()
+    assert body0["total"] == 0
+    names0 = [s["name"] for s in body0["by_stage_name"]]
+    # The seeded canonical stages are present, ordered ascending.
+    assert names0[:6] == ["Assembly", "Firmware", "Calibration", "QA", "Staging", "Deployed"]
+
+    # Create three devices across two product types — they should land at stage 1 ("Assembly").
+    for mac, pt in [
+        ("AA:BB:CC:DD:EE:30", "AEMS"),
+        ("AA:BB:CC:DD:EE:31", "BEMS"),
+        ("AA:BB:CC:DD:EE:32", "CHARGER"),
+    ]:
+        r = await client.post("/api/devices", json={"mac_address": mac, "product_type": pt})
+        assert r.status_code == 200, r.text
+
+    r1 = await client.get("/api/devices/stats")
+    body1 = r1.json()
+    assert body1["total"] == 3
+    assembly = next(s for s in body1["by_stage_name"] if s["name"] == "Assembly")
+    assert assembly["count"] == 3
+    assert assembly["order"] == 1
+
+
+async def test_lookup_by_mac_normalizes_case(client, auth_user):
+    """GET /api/devices/lookup/{mac} returns the device regardless of case."""
+    user, token = await auth_user("admin")
+    client.cookies.set("auth_token", token)
+
+    await client.post(
+        "/api/devices",
+        json={"mac_address": "AA:BB:CC:DD:EE:40", "product_type": "AEMS"},
+    )
+
+    hit = await client.get("/api/devices/lookup/aa:bb:cc:dd:ee:40")
+    assert hit.status_code == 200
+    assert hit.json()["mac_address"] == "AA:BB:CC:DD:EE:40"
+
+    miss = await client.get("/api/devices/lookup/AA:BB:CC:DD:EE:FF")
+    assert miss.status_code == 404
+
+
+async def test_recent_audit_returns_cross_device_entries(client, auth_user):
+    """GET /api/audit returns the most recent N audit rows across all devices."""
+    user, token = await auth_user("admin")
+    client.cookies.set("auth_token", token)
+
+    # Empty audit log is fine.
+    r0 = await client.get("/api/audit?limit=5")
+    assert r0.status_code == 200
+    assert r0.json() == []
+
+    # Two devices → two 'created' audit rows.
+    await client.post("/api/devices", json={"mac_address": "AA:BB:CC:DD:EE:50", "product_type": "AEMS"})
+    await client.post("/api/devices", json={"mac_address": "AA:BB:CC:DD:EE:51", "product_type": "BEMS"})
+
+    r1 = await client.get("/api/audit?limit=5")
+    body = r1.json()
+    assert len(body) == 2
+    # Newest first.
+    macs = [e["device_mac"] for e in body]
+    assert macs == ["AA:BB:CC:DD:EE:51", "AA:BB:CC:DD:EE:50"]
+    assert all(e["action"] == "created" for e in body)
+    assert all(e["user_email"] == user["email"] for e in body)
+    # limit clamps the result set.
+    r2 = await client.get("/api/audit?limit=1")
+    assert len(r2.json()) == 1
+
+
 async def test_bulk_import_dedup_skips_existing(client, auth_user):
     user, token = await auth_user("technician")
     client.cookies.set("auth_token", token)

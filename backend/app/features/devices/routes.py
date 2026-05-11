@@ -77,6 +77,11 @@ async def create_device(
         raise
 
 
+@router.get("/stats")
+async def device_stats(user: dict = Depends(get_current_user)):
+    return await DeviceService.stats()
+
+
 @router.get("/lookup/{mac_address}")
 async def lookup_by_mac(mac_address: str, user: dict = Depends(get_current_user)):
     device = await DeviceService.lookup_by_mac(mac_address)
