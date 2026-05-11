@@ -4,7 +4,7 @@ import io
 import re
 from typing import Optional
 from uuid import UUID
-from app.database import DatabasePool
+from app.shared.db import DatabasePool
 
 MAC_PATTERN = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 VALID_PRODUCT_TYPES = {"AEMS", "BEMS", "CHARGER", "NETWORKING"}

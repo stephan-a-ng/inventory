@@ -2,23 +2,12 @@
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from app.dependencies import get_current_user, require_role
-from app.services.stage_service import StageService
+from app.features.auth import get_current_user, require_role
+
+from .models import StageCreate, StageUpdate
+from .services import StageService
 
 router = APIRouter(prefix="/api/stages", tags=["stages"])
-
-
-class StageCreate(BaseModel):
-    product_type: str
-    name: str
-    description: Optional[str] = None
-
-
-class StageUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    order: Optional[int] = None
 
 
 def _serialize_stage(s: dict) -> dict:

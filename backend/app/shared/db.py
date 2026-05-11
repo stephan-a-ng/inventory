@@ -1,7 +1,7 @@
 """asyncpg connection pool"""
 import os
 import asyncpg
-from app.config import DATABASE_URL
+from app.shared.config import DATABASE_URL
 
 class DatabasePool:
     _pool = None

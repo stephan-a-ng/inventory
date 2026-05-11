@@ -1,8 +1,10 @@
-"""Authentication dependencies"""
+"""Authentication dependencies — used by every feature's routes."""
 from typing import Optional
 from fastapi import Request, HTTPException
-from app.routes.auth import verify_jwt_token
-from app.database import DatabasePool
+
+from app.shared.db import DatabasePool
+
+from .jwt import verify_jwt_token
 
 
 async def get_current_user(request: Request) -> dict:

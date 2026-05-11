@@ -1,9 +1,10 @@
 """Board revision routes"""
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
-from app.dependencies import get_current_user, require_role
-from app.models import BoardRevisionOut, BoardRevisionUpsert
-from app.services.board_revision_service import BoardRevisionService
+from app.features.auth import get_current_user, require_role
+
+from .models import BoardRevisionOut, BoardRevisionUpsert
+from .board_revision_service import BoardRevisionService
 
 router = APIRouter(tags=["board_revisions"])
 

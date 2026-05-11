@@ -1,42 +1,22 @@
-"""Authentication routes — Google OAuth with role-based access"""
+"""Authentication routes — Google OAuth with role-based access."""
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
-from jose import jwt, JWTError
 
-from app.config import (
+from app.shared.config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
-    JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS,
+    JWT_EXPIRATION_HOURS,
     FRONTEND_URL, IS_DEPLOYED, is_authorized_email,
 )
-from app.database import DatabasePool
+from app.shared.db import DatabasePool
+
+from .jwt import create_jwt_token, verify_jwt_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-
-def create_jwt_token(user_id: str, email: str, role: str = "viewer") -> str:
-    expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
-    payload = {
-        "sub": user_id,
-        "email": email,
-        "role": role,
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def verify_jwt_token(token: str) -> Optional[dict]:
-    try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except JWTError:
-        return None
 
 
 @router.get("/google")

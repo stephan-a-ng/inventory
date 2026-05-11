@@ -1,7 +1,7 @@
 """Device business logic"""
 from typing import Optional
 from uuid import UUID
-from app.database import DatabasePool
+from app.shared.db import DatabasePool
 
 
 class DeviceService:

@@ -2,9 +2,10 @@
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
-from app.dependencies import get_current_user, require_role
-from app.models import SubsystemOut, SubsystemCreate, SubsystemUpdate
-from app.services.subsystem_service import SubsystemService
+from app.features.auth import get_current_user, require_role
+
+from .models import SubsystemOut, SubsystemCreate, SubsystemUpdate
+from .services import SubsystemService
 
 router = APIRouter(prefix="/api/subsystems", tags=["subsystems"])
 

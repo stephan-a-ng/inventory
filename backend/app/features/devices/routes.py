@@ -3,11 +3,12 @@ from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
-from app.dependencies import get_current_user, require_role
-from app.models import DeviceCreate, DeviceUpdate, DeviceOut, DeviceListResponse, BulkStageRequest
-from app.services.device_service import DeviceService
-from app.services.audit_service import AuditService
-from app.services.csv_service import CsvService
+from app.features.auth import get_current_user, require_role
+from app.features.audit import AuditService
+
+from .models import DeviceCreate, DeviceUpdate, BulkStageRequest
+from .services import DeviceService
+from .csv_service import CsvService
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 

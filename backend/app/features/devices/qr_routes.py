@@ -2,9 +2,10 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from app.dependencies import get_current_user
-from app.services.device_service import DeviceService
-from app.services.qr_service import generate_qr_png
+from app.features.auth import get_current_user
+
+from .services import DeviceService
+from .qr_service import generate_qr_png
 
 router = APIRouter(prefix="/api/devices", tags=["qr"])
 
