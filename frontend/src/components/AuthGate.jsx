@@ -22,7 +22,7 @@ export default function AuthGate({ children }) {
         <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24 }}>
           <img src="/logo-yellow.png" alt="MoonFive" style={{ height: 48 }} />
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-0.03em', color: 'var(--m5-ink)', margin: 0 }}>Inventory Manager</h1>
+            <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-0.03em', color: 'var(--m5-ink)', margin: 0 }}>Inventory</h1>
             <p style={{ color: 'var(--m5-muted)', marginTop: 6, fontSize: 14 }}>
               Track hardware devices through the commissioning pipeline
             </p>
