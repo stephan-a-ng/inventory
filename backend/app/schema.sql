@@ -1,5 +1,8 @@
 -- MoonFive Inventory Manager Database Schema
 
+CREATE SCHEMA IF NOT EXISTS inventory;
+SET search_path TO inventory, public;
+
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,

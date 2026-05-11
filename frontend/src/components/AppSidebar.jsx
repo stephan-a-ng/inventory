@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, Upload, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, ScanLine, Upload, Settings, LogOut, Menu } from 'lucide-react';
 import useAuth from '@/hooks/useAuth';
 
 function getInitials(name) {
@@ -21,82 +21,9 @@ const adminItems = [
 ];
 
 const s = {
-  aside: {
-    width: '232px',
-    minWidth: '232px',
-    background: 'var(--m5-ink)',
-    color: 'var(--m5-cream)',
-    display: 'flex',
-    flexDirection: 'column',
-    position: 'sticky',
-    top: 0,
-    height: '100vh',
-    overflowY: 'auto',
-    flexShrink: 0,
-  },
-  brand: {
-    padding: '24px 20px 28px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    borderBottom: '1px solid var(--m5-rule-dark)',
-    cursor: 'pointer',
-  },
-  brandLogo: {
-    width: '28px',
-    height: '28px',
-    objectFit: 'contain',
-  },
-  brandText: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  brandTitle: {
-    fontWeight: 900,
-    fontSize: '16px',
-    letterSpacing: '-0.02em',
-    lineHeight: 1,
-    display: 'flex',
-    alignItems: 'center',
-  },
-  brandSeparator: {
-    color: 'var(--m5-muted)',
-    fontWeight: 400,
-    margin: '0 6px',
-  },
-  brandSub: {
-    fontFamily: 'var(--m5-font-mono)',
-    fontSize: '11px',
-    letterSpacing: '0.14em',
-    textTransform: 'uppercase',
-    color: 'var(--m5-muted)',
-    display: 'block',
-    marginTop: '4px',
-  },
-  group: {
-    padding: '20px 12px 0',
-  },
-  groupLabel: {
-    fontFamily: 'var(--m5-font-mono)',
-    fontSize: '10.5px',
-    letterSpacing: '0.16em',
-    textTransform: 'uppercase',
-    color: 'var(--m5-muted)',
-    padding: '0 12px 10px',
-    display: 'block',
-  },
   nav: {
     display: 'flex',
     flexDirection: 'column',
-  },
-  footer: {
-    marginTop: 'auto',
-    borderTop: '1px solid var(--m5-rule-dark)',
-    padding: '16px 20px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    fontSize: '13px',
   },
   avatar: {
     width: '28px',
@@ -112,37 +39,18 @@ const s = {
     borderRadius: 0,
     flexShrink: 0,
   },
-  userInfo: {
-    display: 'flex',
-    flexDirection: 'column',
-    minWidth: 0,
-    flex: 1,
-  },
-  userName: {
-    fontWeight: 600,
-    fontSize: '13px',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  userRole: {
-    fontFamily: 'var(--m5-font-mono)',
-    fontSize: '10.5px',
-    letterSpacing: '0.12em',
-    textTransform: 'uppercase',
-    color: 'var(--m5-muted)',
-  },
 };
 
-function NavItem({ item, active }) {
+function NavItem({ item, active, collapsed }) {
   const navigate = useNavigate();
   const [hovered, setHovered] = React.useState(false);
 
   const itemStyle = {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: collapsed ? 'center' : 'flex-start',
     gap: '12px',
-    padding: '10px 12px',
+    padding: collapsed ? '10px 0' : '10px 12px',
     background: active
       ? 'rgba(250,247,238,0.06)'
       : hovered
@@ -167,9 +75,10 @@ function NavItem({ item, active }) {
       onClick={() => navigate(item.url)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      title={collapsed ? item.title : undefined}
     >
       <item.icon size={16} />
-      {item.title}
+      {!collapsed && item.title}
     </button>
   );
 }
@@ -213,32 +122,145 @@ export default function AppSidebar() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
+  const [collapsed, setCollapsed] = React.useState(
+    () => localStorage.getItem('sidebar-collapsed') === 'true'
+  );
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('sidebar-collapsed', String(next));
+      return next;
+    });
+  };
+
   const isAdmin = user?.role === 'admin';
   const initials = user ? getInitials(user.name || user.email) : '?';
 
+  const asideStyle = {
+    width: collapsed ? '56px' : '232px',
+    minWidth: collapsed ? '56px' : '232px',
+    background: 'var(--m5-ink)',
+    color: 'var(--m5-cream)',
+    display: 'flex',
+    flexDirection: 'column',
+    position: 'sticky',
+    top: 0,
+    height: '100vh',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    flexShrink: 0,
+    transition: 'width 0.18s ease, min-width 0.18s ease',
+  };
+
+  const brandStyle = {
+    padding: collapsed ? '20px 0 20px' : '20px 16px 20px',
+    display: 'flex',
+    flexDirection: collapsed ? 'column' : 'row',
+    alignItems: 'center',
+    justifyContent: collapsed ? 'center' : 'space-between',
+    gap: collapsed ? '12px' : '0',
+    borderBottom: '1px solid var(--m5-rule-dark)',
+    minHeight: '72px',
+  };
+
+  const brandLeftStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    cursor: 'pointer',
+    flex: collapsed ? 'none' : 1,
+    minWidth: 0,
+  };
+
+  const toggleBtnStyle = {
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--m5-muted)',
+    cursor: 'pointer',
+    padding: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderRadius: 0,
+    transition: 'color 0.12s ease',
+  };
+
+  const groupStyle = {
+    padding: collapsed ? '16px 0 0' : '20px 12px 0',
+  };
+
+  const groupLabelStyle = {
+    fontFamily: 'var(--m5-font-mono)',
+    fontSize: '10.5px',
+    letterSpacing: '0.16em',
+    textTransform: 'uppercase',
+    color: 'var(--m5-muted)',
+    padding: collapsed ? '0 0 10px' : '0 12px 10px',
+    display: collapsed ? 'none' : 'block',
+  };
+
+  const footerStyle = {
+    marginTop: 'auto',
+    borderTop: '1px solid var(--m5-rule-dark)',
+    padding: collapsed ? '14px 0' : '16px 20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: collapsed ? 'center' : 'flex-start',
+    gap: '10px',
+    fontSize: '13px',
+  };
+
   return (
-    <aside style={s.aside}>
+    <aside style={asideStyle}>
       {/* Brand */}
-      <div style={s.brand} onClick={() => navigate('/')}>
-        <img src="/images/mf-white.png" alt="Moon Five" style={s.brandLogo} />
-        <div style={s.brandText}>
-          <span style={s.brandTitle}>
-            Moon Five
-            <span style={s.brandSeparator}>/</span>
-            Inventory
-          </span>
-          <span style={s.brandSub}>v2.4</span>
+      <div style={brandStyle}>
+        <div style={brandLeftStyle} onClick={() => navigate('/')}>
+          {!collapsed ? (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img
+                  src="/logo-yellow.png"
+                  alt="Inventory"
+                  style={{ width: '24px', height: '24px', objectFit: 'contain', flexShrink: 0 }}
+                />
+                <span style={{ fontWeight: 900, fontSize: '16px', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                  Inventory
+                </span>
+              </div>
+              <span style={{ fontFamily: 'var(--m5-font-mono)', fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--m5-muted)', marginTop: '5px', paddingLeft: '34px' }}>
+                v2.4
+              </span>
+            </div>
+          ) : (
+            <img
+              src="/logo-yellow.png"
+              alt="Inventory"
+              style={{ width: '24px', height: '24px', objectFit: 'contain', flexShrink: 0 }}
+            />
+          )}
         </div>
+        <button
+          style={toggleBtnStyle}
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--m5-cream)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--m5-muted)')}
+        >
+          <Menu size={16} />
+        </button>
       </div>
 
       {/* Workspace group */}
-      <div style={s.group}>
-        <span style={s.groupLabel}>Workspace</span>
+      <div style={groupStyle}>
+        <span style={groupLabelStyle}>Workspace</span>
         <nav style={s.nav}>
           {workspaceItems.map((item) => (
             <NavItem
               key={item.url}
               item={item}
+              collapsed={collapsed}
               active={
                 item.url === '/'
                   ? location.pathname === '/'
@@ -251,13 +273,14 @@ export default function AppSidebar() {
 
       {/* Admin group */}
       {isAdmin && (
-        <div style={s.group}>
-          <span style={s.groupLabel}>Admin</span>
+        <div style={groupStyle}>
+          <span style={groupLabelStyle}>Admin</span>
           <nav style={s.nav}>
             {adminItems.map((item) => (
               <NavItem
                 key={item.url}
                 item={item}
+                collapsed={collapsed}
                 active={location.pathname.startsWith(item.url)}
               />
             ))}
@@ -267,13 +290,23 @@ export default function AppSidebar() {
 
       {/* Footer */}
       {user && (
-        <div style={s.footer}>
-          <div style={s.avatar}>{initials}</div>
-          <div style={s.userInfo}>
-            <span style={s.userName}>{user.name || user.email}</span>
-            <span style={s.userRole}>{user.role}</span>
+        <div style={footerStyle}>
+          <div style={s.avatar} title={collapsed ? (user.name || user.email) : undefined}>
+            {initials}
           </div>
-          <LogoutButton onClick={logout} />
+          {!collapsed && (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                <span style={{ fontWeight: 600, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.name || user.email}
+                </span>
+                <span style={{ fontFamily: 'var(--m5-font-mono)', fontSize: '10.5px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--m5-muted)' }}>
+                  {user.role}
+                </span>
+              </div>
+              <LogoutButton onClick={logout} />
+            </>
+          )}
         </div>
       )}
     </aside>
