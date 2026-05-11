@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ScanLine, Upload, Settings, LogOut, Menu } from 'lucide-react';
+import { LayoutDashboard, HardDrive, ScanLine, Upload, Settings, LogOut, Menu } from 'lucide-react';
 import useAuth from '@/features/auth/useAuth';
 
 function getInitials(name) {
@@ -12,6 +12,7 @@ function getInitials(name) {
 
 const workspaceItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'Devices', url: '/devices', icon: HardDrive },
   { title: 'Scanner', url: '/scanner', icon: ScanLine },
   { title: 'Bulk Import', url: '/import', icon: Upload },
 ];

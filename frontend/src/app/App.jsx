@@ -8,6 +8,9 @@ import { AuthProvider, AuthGate } from '@/features/auth';
 const Dashboard = lazy(() =>
   import('@/features/devices').then((m) => ({ default: m.Dashboard })),
 );
+const Devices = lazy(() =>
+  import('@/features/devices').then((m) => ({ default: m.Devices })),
+);
 const DeviceDetail = lazy(() =>
   import('@/features/devices').then((m) => ({ default: m.DeviceDetail })),
 );
@@ -35,6 +38,7 @@ function App() {
           <Suspense fallback={<Loading />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/devices" element={<Devices />} />
               <Route path="/devices/:id" element={<DeviceDetail />} />
               <Route path="/scanner" element={<Scanner />} />
               <Route path="/import" element={<BulkImport />} />

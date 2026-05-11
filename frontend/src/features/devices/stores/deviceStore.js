@@ -15,6 +15,9 @@ const useDeviceStore = create((set, get) => ({
   selectedIds: new Set(),
   stages: [],
 
+  stats: { total: 0, unstaged: 0, by_stage_name: [] },
+  recentAudit: [],
+
   setFilter: (key, value) =>
     set((state) => ({
       filters: { ...state.filters, [key]: value },
@@ -68,6 +71,59 @@ const useDeviceStore = create((set, get) => ({
     } catch {
       // ignore
     }
+  },
+
+  fetchStats: async () => {
+    try {
+      const res = await fetch('/api/devices/stats', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        set({ stats: data });
+      }
+    } catch {
+      // ignore — dashboard renders with zeros
+    }
+  },
+
+  fetchRecentAudit: async (limit = 20) => {
+    try {
+      const res = await fetch(`/api/audit?limit=${limit}`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        set({ recentAudit: data });
+      }
+    } catch {
+      // ignore
+    }
+  },
+
+  // Returns { device } on hit, { notFound: true } on 404, or { error } on failure.
+  lookupByMac: async (macInput) => {
+    const mac = (macInput || '').trim().toUpperCase();
+    if (!mac) return { error: 'empty' };
+    const res = await fetch(`/api/devices/lookup/${encodeURIComponent(mac)}`, {
+      credentials: 'include',
+    });
+    if (res.status === 404) return { notFound: true, mac };
+    if (!res.ok) return { error: `lookup failed (${res.status})`, mac };
+    const device = await res.json();
+    return { device, mac };
+  },
+
+  // Registers a new device with just the bare minimum the backend requires.
+  // Backend assigns stage 1 (Assembly) for the chosen product type.
+  registerDevice: async ({ mac_address, product_type }) => {
+    const res = await fetch('/api/devices', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mac_address: mac_address.toUpperCase(), product_type }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `register failed (${res.status})`);
+    }
+    return await res.json();
   },
 }));
 
