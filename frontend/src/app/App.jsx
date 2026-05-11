@@ -11,8 +11,14 @@ const Dashboard = lazy(() =>
 const Devices = lazy(() =>
   import('@/features/devices').then((m) => ({ default: m.Devices })),
 );
+const DevicePass = lazy(() =>
+  import('@/features/devices').then((m) => ({ default: m.DevicePass })),
+);
 const DeviceDetail = lazy(() =>
   import('@/features/devices').then((m) => ({ default: m.DeviceDetail })),
+);
+const SerialFormat = lazy(() =>
+  import('@/features/devices').then((m) => ({ default: m.SerialFormat })),
 );
 const Scanner = lazy(() =>
   import('@/features/scanning').then((m) => ({ default: m.Scanner })),
@@ -39,7 +45,9 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/devices" element={<Devices />} />
-              <Route path="/devices/:id" element={<DeviceDetail />} />
+              <Route path="/devices/:id" element={<DevicePass />} />
+              <Route path="/devices/:id/details" element={<DeviceDetail />} />
+              <Route path="/serial-format" element={<SerialFormat />} />
               <Route path="/scanner" element={<Scanner />} />
               <Route path="/import" element={<BulkImport />} />
               <Route path="/settings" element={<Settings />} />

@@ -8,5 +8,7 @@
  */
 export { default as Dashboard } from './pages/Dashboard';
 export { default as Devices } from './pages/Devices';
+export { default as DevicePass } from './pages/DevicePass';
 export { default as DeviceDetail } from './pages/DeviceDetail';
+export { default as SerialFormat } from './pages/SerialFormat';
 export { default as useDeviceStore } from './stores/deviceStore';
