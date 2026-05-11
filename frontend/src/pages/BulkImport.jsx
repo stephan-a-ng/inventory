@@ -1,10 +1,8 @@
 import { useState } from 'react';
-import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/AppSidebar';
 import CsvUpload from '@/components/import/CsvUpload';
 import CsvPreview from '@/components/import/CsvPreview';
 import ImportProgress from '@/components/import/ImportProgress';
-import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 import useDeviceStore from '@/stores/deviceStore';
 
@@ -15,6 +13,7 @@ export default function BulkImport() {
   const [previewErrors, setPreviewErrors] = useState([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
+  const [hoveredBtn, setHoveredBtn] = useState(null);
   const { filters } = useDeviceStore();
 
   async function handleFileSelect(file) {
@@ -90,31 +89,123 @@ export default function BulkImport() {
     setResult(null);
   }
 
+  const ghostBtn = (key) => ({
+    height: 38,
+    padding: '0 16px',
+    border: '1px solid var(--m5-rule)',
+    background: hoveredBtn === key ? 'var(--m5-cream-deep)' : 'var(--m5-cream)',
+    color: 'var(--m5-ink)',
+    fontWeight: 600,
+    fontSize: 13.5,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    borderRadius: 0,
+    transition: 'background 0.12s ease',
+  });
+
   return (
-    <SidebarProvider>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--m5-cream)' }}>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex items-center gap-2 p-4 border-b border-border">
-          <SidebarTrigger />
-          <h1 className="text-lg font-semibold flex-1">Bulk Import</h1>
-          <Button variant="outline" onClick={handleExport} className="cursor-pointer">
-            <Download className="h-4 w-4 mr-1" /> Export CSV
-          </Button>
+      <main style={{ flex: 1, minWidth: 0 }}>
+        {/* M5 topbar */}
+        <header style={{ padding: '24px 40px 0', display: 'flex', alignItems: 'flex-end', gap: 24 }}>
+          <div>
+            <div style={{
+              fontFamily: 'var(--m5-font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--m5-muted)',
+              marginBottom: 6,
+            }}>
+              MoonFive / Inventory / Import
+            </div>
+            <h1 style={{
+              fontSize: 48,
+              fontWeight: 900,
+              letterSpacing: '-0.035em',
+              lineHeight: 1,
+              margin: 0,
+              color: 'var(--m5-ink)',
+            }}>
+              Import.
+            </h1>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', paddingBottom: 4 }}>
+            <button
+              style={ghostBtn('export')}
+              onMouseEnter={() => setHoveredBtn('export')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={handleExport}
+            >
+              <Download size={16} />
+              Export CSV
+            </button>
+          </div>
         </header>
-        <div className="p-4 max-w-2xl mx-auto">
-          {step === 'upload' && <CsvUpload onFileSelect={handleFileSelect} />}
-          {step === 'preview' && (
-            <CsvPreview
-              rows={previewRows}
-              errors={previewErrors}
-              onImport={handleImport}
-              onCancel={reset}
-              importing={importing}
-            />
-          )}
-          {step === 'result' && <ImportProgress result={result} onReset={reset} />}
+
+        {/* Content */}
+        <div style={{ padding: '28px 40px 64px' }}>
+          <div style={{ maxWidth: 720 }}>
+            {step === 'upload' && (
+              <div style={{
+                border: '2px dashed var(--m5-rule)',
+                background: `repeating-linear-gradient(135deg, var(--m5-cream-deep) 0 14px, transparent 14px 28px), var(--m5-cream)`,
+              }}>
+                <CsvUpload onFileSelect={handleFileSelect} />
+              </div>
+            )}
+            {step === 'preview' && (
+              <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
+                <div style={{
+                  padding: '14px 20px',
+                  borderBottom: '1px solid var(--m5-rule)',
+                  background: 'var(--m5-cream-deep)',
+                  fontFamily: 'var(--m5-font-mono)',
+                  fontSize: 11,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--m5-muted)',
+                }}>
+                  Preview — {previewRows.length} rows
+                </div>
+                <div style={{ padding: '20px' }}>
+                  <CsvPreview
+                    rows={previewRows}
+                    errors={previewErrors}
+                    onImport={handleImport}
+                    onCancel={reset}
+                    importing={importing}
+                  />
+                </div>
+              </div>
+            )}
+            {step === 'result' && (
+              <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
+                <div style={{
+                  padding: '14px 20px',
+                  borderBottom: '1px solid var(--m5-rule)',
+                  background: 'var(--m5-cream-deep)',
+                  fontFamily: 'var(--m5-font-mono)',
+                  fontSize: 11,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--m5-muted)',
+                }}>
+                  Import result
+                </div>
+                <div style={{ padding: '20px' }}>
+                  <ImportProgress result={result} onReset={reset} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </SidebarInset>
-    </SidebarProvider>
+      </main>
+    </div>
   );
 }

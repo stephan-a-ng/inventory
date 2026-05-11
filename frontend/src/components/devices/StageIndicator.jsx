@@ -47,12 +47,10 @@ export default function StageIndicator({ stages, currentStageId }) {
       <div style={{ display: 'flex', gap: 2, height: 4 }}>
         {stages.map((stage, i) => {
           let bg;
-          if (isDeployed) {
-            bg = 'var(--m5-green)';
-          } else if (i < currentIdx) {
+          if (i < currentIdx) {
             bg = 'var(--m5-ink)';
           } else if (i === currentIdx) {
-            bg = 'var(--m5-yellow)';
+            bg = isDeployed ? 'var(--m5-green)' : 'var(--m5-yellow)';
           } else {
             bg = 'var(--m5-rule)';
           }

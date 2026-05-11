@@ -4,7 +4,7 @@ import { LayoutDashboard, ScanLine, Upload, Settings, LogOut } from 'lucide-reac
 import useAuth from '@/hooks/useAuth';
 
 function getInitials(name) {
-  if (!name) return '?';
+  if (!name || !name.trim()) return '?';
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return parts[0][0].toUpperCase();
@@ -201,6 +201,7 @@ function LogoutButton({ onClick }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       title="Logout"
+      aria-label="Logout"
     >
       <LogOut size={14} />
     </button>

@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import AppSidebar from '@/components/AppSidebar';
 import StageIndicator from '@/components/devices/StageIndicator';
 import DeviceForm from '@/components/devices/DeviceForm';
 import AuditTimeline from '@/components/audit/AuditTimeline';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { ArrowLeft, ArrowRight, Edit, Download, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import useAuth from '@/hooks/useAuth';
@@ -23,6 +20,7 @@ export default function DeviceDetail() {
   const [subsystems, setSubsystems] = useState([]);
   const [boardRevisions, setBoardRevisions] = useState([]);
   const [revisionEdits, setRevisionEdits] = useState({});
+  const [hoveredBtn, setHoveredBtn] = useState(null);
   const canEdit = user?.role === 'admin' || user?.role === 'technician';
 
   useEffect(() => {
@@ -126,29 +124,66 @@ export default function DeviceDetail() {
     }
   }
 
+  const ghostBtn = (key) => ({
+    height: 38,
+    padding: '0 16px',
+    border: '1px solid var(--m5-rule)',
+    background: hoveredBtn === key ? 'var(--m5-cream-deep)' : 'var(--m5-cream)',
+    color: 'var(--m5-ink)',
+    fontWeight: 600,
+    fontSize: 13.5,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    borderRadius: 0,
+    transition: 'background 0.12s ease',
+  });
+
+  const primaryBtn = (key) => ({
+    height: 38,
+    padding: '0 16px',
+    border: hoveredBtn === key ? '1px solid var(--m5-yellow-deep, #e6bc00)' : '1px solid var(--m5-yellow)',
+    background: hoveredBtn === key ? 'var(--m5-yellow-deep, #e6bc00)' : 'var(--m5-yellow)',
+    color: 'var(--m5-ink)',
+    fontWeight: 600,
+    fontSize: 13.5,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    borderRadius: 0,
+    transition: 'background 0.12s ease, border-color 0.12s ease',
+  });
+
   if (loading) {
     return (
-      <SidebarProvider>
+      <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--m5-cream)' }}>
         <AppSidebar />
-        <SidebarInset>
-          <div className="flex items-center justify-center min-h-screen">
-            <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+        <main style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{
+            width: 32,
+            height: 32,
+            border: '2px solid var(--m5-yellow)',
+            borderTopColor: 'transparent',
+            borderRadius: '50%',
+            animation: 'spin 0.7s linear infinite',
+          }} />
+        </main>
+      </div>
     );
   }
 
   if (!device) {
     return (
-      <SidebarProvider>
+      <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--m5-cream)' }}>
         <AppSidebar />
-        <SidebarInset>
-          <div className="flex items-center justify-center min-h-screen text-muted-foreground">
+        <main style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: 'var(--m5-muted)', fontFamily: 'var(--m5-font-mono)', fontSize: 13 }}>
             Device not found
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+          </span>
+        </main>
+      </div>
     );
   }
 
@@ -156,51 +191,115 @@ export default function DeviceDetail() {
   const nextStage = currentIdx >= 0 && currentIdx < stages.length - 1 ? stages[currentIdx + 1] : null;
 
   return (
-    <SidebarProvider>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--m5-cream)' }}>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex items-center gap-2 p-4 border-b border-border">
-          <SidebarTrigger />
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold">{device.device_name || device.mac_address}</h1>
-            <p className="text-sm text-muted-foreground font-mono">{device.mac_address} · {device.product_type} — {device.current_stage_name || 'Unassigned'}</p>
-          </div>
-          {canEdit && (
-            <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" onClick={() => setShowEdit(true)}>
-                <Edit className="h-4 w-4 mr-1" /> Edit
-              </Button>
-              {nextStage && (
-                <Button onClick={advanceStage} className="cursor-pointer">
-                  <ArrowRight className="h-4 w-4 mr-1" /> Advance to {nextStage.name}
-                </Button>
-              )}
+      <main style={{ flex: 1, minWidth: 0 }}>
+        {/* M5 topbar */}
+        <header style={{ padding: '24px 40px 0', display: 'flex', alignItems: 'flex-end', gap: 24 }}>
+          <div>
+            <div style={{
+              fontFamily: 'var(--m5-font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--m5-muted)',
+              marginBottom: 6,
+            }}>
+              MoonFive / Inventory / Device
             </div>
-          )}
+            <h1 style={{
+              fontSize: 48,
+              fontWeight: 900,
+              letterSpacing: '-0.035em',
+              lineHeight: 1,
+              margin: 0,
+              color: 'var(--m5-ink)',
+            }}>
+              {device.hostname || device.mac_address}.
+            </h1>
+          </div>
+
+          {/* Actions */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginLeft: 'auto',
+            paddingBottom: 4,
+          }}>
+            <button
+              style={ghostBtn('back')}
+              onMouseEnter={() => setHoveredBtn('back')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={() => navigate('/')}
+            >
+              <ArrowLeft size={16} />
+              Back
+            </button>
+            {canEdit && (
+              <button
+                style={ghostBtn('edit')}
+                onMouseEnter={() => setHoveredBtn('edit')}
+                onMouseLeave={() => setHoveredBtn(null)}
+                onClick={() => setShowEdit(true)}
+              >
+                <Edit size={16} />
+                Edit
+              </button>
+            )}
+            {canEdit && nextStage && (
+              <button
+                style={primaryBtn('advance')}
+                onMouseEnter={() => setHoveredBtn('advance')}
+                onMouseLeave={() => setHoveredBtn(null)}
+                onClick={advanceStage}
+              >
+                <ArrowRight size={16} />
+                Advance to {nextStage.name}
+              </button>
+            )}
+          </div>
         </header>
 
-        <div className="p-4 space-y-4">
+        {/* Content */}
+        <div style={{ padding: '28px 40px 64px', display: 'flex', flexDirection: 'column', gap: 24 }}>
           {/* Stage Pipeline */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Commissioning Pipeline</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
+            <div style={{
+              padding: '14px 20px',
+              borderBottom: '1px solid var(--m5-rule)',
+              background: 'var(--m5-cream-deep)',
+              fontFamily: 'var(--m5-font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--m5-muted)',
+            }}>
+              Commissioning Pipeline
+            </div>
+            <div style={{ padding: '20px' }}>
               <StageIndicator stages={stages} currentStageId={device.current_stage_id} />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Device Info + QR */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 24 }}>
             {/* Device Info */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-sm">Device Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
+              <div style={{
+                padding: '14px 20px',
+                borderBottom: '1px solid var(--m5-rule)',
+                background: 'var(--m5-cream-deep)',
+                fontFamily: 'var(--m5-font-mono)',
+                fontSize: 11,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--m5-muted)',
+              }}>
+                Device Information
+              </div>
+              <div style={{ padding: '20px' }}>
+                <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                   {[
                     ['MAC Address', device.mac_address],
                     ['Product Type', device.product_type],
@@ -212,68 +311,103 @@ export default function DeviceDetail() {
                     ['Created', new Date(device.created_at).toLocaleString()],
                   ].map(([label, value]) => (
                     <div key={label}>
-                      <dt className="text-muted-foreground">{label}</dt>
-                      <dd className="font-medium mt-0.5">{value || '—'}</dd>
+                      <dt style={{ fontSize: 11, fontFamily: 'var(--m5-font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--m5-muted)', marginBottom: 4 }}>{label}</dt>
+                      <dd style={{ fontSize: 14, color: 'var(--m5-ink)', fontWeight: 500 }}>{value || '—'}</dd>
                     </div>
                   ))}
                 </dl>
                 {device.notes && (
-                  <div className="mt-4 pt-4 border-t border-border">
-                    <p className="text-sm text-muted-foreground">Notes</p>
-                    <p className="text-sm mt-1">{device.notes}</p>
+                  <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--m5-rule)' }}>
+                    <p style={{ fontSize: 11, fontFamily: 'var(--m5-font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--m5-muted)', marginBottom: 6 }}>Notes</p>
+                    <p style={{ fontSize: 14, color: 'var(--m5-ink)' }}>{device.notes}</p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* QR Code */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <QrCode className="h-4 w-4" /> QR Code
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center gap-4">
-                <div className="bg-white p-4 rounded-lg">
+            <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
+              <div style={{
+                padding: '14px 20px',
+                borderBottom: '1px solid var(--m5-rule)',
+                background: 'var(--m5-cream-deep)',
+                fontFamily: 'var(--m5-font-mono)',
+                fontSize: 11,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--m5-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <QrCode size={12} />
+                QR Code
+              </div>
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                <div style={{ background: '#fff', padding: 16 }}>
                   <QRCodeSVG value={device.mac_address} size={160} />
                 </div>
-                <Button variant="outline" size="sm" onClick={downloadQR} className="cursor-pointer">
-                  <Download className="h-4 w-4 mr-1" /> Download PNG
-                </Button>
-              </CardContent>
-            </Card>
+                <button
+                  style={ghostBtn('download')}
+                  onMouseEnter={() => setHoveredBtn('download')}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                  onClick={downloadQR}
+                >
+                  <Download size={14} />
+                  Download PNG
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Audit Trail */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Audit Trail</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
+            <div style={{
+              padding: '14px 20px',
+              borderBottom: '1px solid var(--m5-rule)',
+              background: 'var(--m5-cream-deep)',
+              fontFamily: 'var(--m5-font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--m5-muted)',
+            }}>
+              Audit Trail
+            </div>
+            <div style={{ padding: '20px' }}>
               <AuditTimeline entries={audit} />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Board Revisions */}
           {subsystems.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Board Revisions</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
+              <div style={{
+                padding: '14px 20px',
+                borderBottom: '1px solid var(--m5-rule)',
+                background: 'var(--m5-cream-deep)',
+                fontFamily: 'var(--m5-font-mono)',
+                fontSize: 11,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--m5-muted)',
+              }}>
+                Board Revisions
+              </div>
+              <div style={{ padding: '20px' }}>
                 <div className="space-y-3">
                   {subsystems.map((sub) => {
                     const edit = revisionEdits[sub.id] || { revision: '', component_number: '' };
                     return (
-                      <div key={sub.id} className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-                        <span className="text-sm font-medium w-36 shrink-0">{sub.name}</span>
+                      <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13, fontWeight: 500, width: 144, flexShrink: 0 }}>{sub.name}</span>
                         <input
                           type="text"
                           value={edit.revision}
                           onChange={(e) => setRevisionEdits(prev => ({ ...prev, [sub.id]: { ...edit, revision: e.target.value } }))}
                           placeholder="Revision (e.g. Rev B)"
                           disabled={!canEdit}
-                          className="flex h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-3 text-xs disabled:opacity-50"
+                          style={{ flex: 1, minWidth: 0, height: 32, border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)', padding: '0 12px', fontSize: 12, borderRadius: 0, outline: 'none', opacity: canEdit ? 1 : 0.5 }}
                         />
                         <input
                           type="text"
@@ -281,30 +415,30 @@ export default function DeviceDetail() {
                           onChange={(e) => setRevisionEdits(prev => ({ ...prev, [sub.id]: { ...edit, component_number: e.target.value } }))}
                           placeholder="Part number"
                           disabled={!canEdit}
-                          className="flex h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-3 text-xs disabled:opacity-50"
+                          style={{ flex: 1, minWidth: 0, height: 32, border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)', padding: '0 12px', fontSize: 12, borderRadius: 0, outline: 'none', opacity: canEdit ? 1 : 0.5 }}
                         />
                         {canEdit && (
-                          <Button size="sm" variant="outline" onClick={() => saveRevision(sub.id)} className="cursor-pointer shrink-0">
+                          <button onClick={() => saveRevision(sub.id)} style={{ height: 32, padding: '0 14px', border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)', color: 'var(--m5-ink)', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderRadius: 0, flexShrink: 0 }}>
                             Save
-                          </Button>
+                          </button>
                         )}
                       </div>
                     );
                   })}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
         </div>
+      </main>
 
-        {showEdit && (
-          <DeviceForm
-            device={device}
-            onClose={() => setShowEdit(false)}
-            onSaved={() => { loadDevice(); loadAudit(); }}
-          />
-        )}
-      </SidebarInset>
-    </SidebarProvider>
+      {showEdit && (
+        <DeviceForm
+          device={device}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => { loadDevice(); loadAudit(); }}
+        />
+      )}
+    </div>
   );
 }
