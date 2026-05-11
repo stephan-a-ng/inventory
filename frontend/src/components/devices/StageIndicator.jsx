@@ -1,39 +1,99 @@
 export default function StageIndicator({ stages, currentStageId }) {
-  if (!stages || stages.length === 0) return null;
+  if (!stages || stages.length === 0) {
+    return (
+      <div style={{ color: 'var(--m5-red)', fontWeight: 600, fontSize: 13 }}>
+        Unassigned
+      </div>
+    );
+  }
 
   const currentIdx = stages.findIndex((s) => s.id === currentStageId);
+  const isDeployed = currentIdx === stages.length - 1 && currentIdx >= 0;
+
+  if (!currentStageId || currentIdx < 0) {
+    return (
+      <div style={{ color: 'var(--m5-red)', fontWeight: 600, fontSize: 13 }}>
+        Unassigned
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto py-2">
-      {stages.map((stage, idx) => {
-        const isCompleted = currentIdx >= 0 && idx < currentIdx;
-        const isCurrent = idx === currentIdx;
-        const isFuture = currentIdx >= 0 && idx > currentIdx;
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Current stage name + position */}
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--m5-ink)',
+          marginBottom: 6,
+        }}
+      >
+        {stages[currentIdx]?.name || 'Unknown'}
+        <span
+          style={{
+            fontFamily: 'var(--m5-font-mono)',
+            fontSize: 11,
+            color: 'var(--m5-muted)',
+            fontWeight: 400,
+            marginLeft: 6,
+          }}
+        >
+          {currentIdx + 1}/{stages.length}
+        </span>
+      </div>
 
-        return (
-          <div key={stage.id} className="flex items-center">
-            {idx > 0 && (
-              <div className={`h-0.5 w-4 sm:w-8 ${isCompleted ? 'bg-green-500' : 'bg-border'}`} />
-            )}
-            <div
-              className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                isCompleted
-                  ? 'bg-green-500/20 text-green-400'
-                  : isCurrent
-                    ? 'bg-primary/20 text-primary ring-1 ring-primary/50'
-                    : 'bg-secondary text-muted-foreground'
-              }`}
-            >
-              <div
-                className={`h-2 w-2 rounded-full ${
-                  isCompleted ? 'bg-green-500' : isCurrent ? 'bg-primary' : 'bg-muted-foreground/30'
-                }`}
-              />
-              {stage.name}
-            </div>
+      {/* Pip strip */}
+      <div style={{ display: 'flex', gap: 2, height: 4 }}>
+        {stages.map((stage, i) => {
+          let bg;
+          if (isDeployed) {
+            bg = 'var(--m5-green)';
+          } else if (i < currentIdx) {
+            bg = 'var(--m5-ink)';
+          } else if (i === currentIdx) {
+            bg = 'var(--m5-yellow)';
+          } else {
+            bg = 'var(--m5-rule)';
+          }
+
+          return (
+            <span
+              key={stage.id}
+              title={stage.name}
+              style={{
+                flex: 1,
+                height: 4,
+                borderRadius: 0,
+                background: bg,
+                display: 'block',
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* Stage labels below pips */}
+      <div style={{ display: 'flex', gap: 3 }}>
+        {stages.map((stage, i) => (
+          <div
+            key={stage.id}
+            style={{
+              flex: 1,
+              fontFamily: 'var(--m5-font-mono)',
+              fontSize: 9,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: i > currentIdx ? 'var(--m5-muted)' : 'var(--m5-ink-soft)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {stage.name}
           </div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
