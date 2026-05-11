@@ -18,7 +18,10 @@ class DatabasePool:
             m = re.match(r"(postgresql://[^@]+)@[^/]+(/.+)", url)
             if m:
                 url = f"{m.group(1)}@{m.group(2)}?host=/cloudsql/{instance}"
-        cls._pool = await asyncpg.create_pool(url, min_size=1, max_size=5)
+        cls._pool = await asyncpg.create_pool(
+            url, min_size=1, max_size=5,
+            server_settings={'search_path': 'inventory'},
+        )
 
     @classmethod
     async def close(cls):

@@ -63,7 +63,11 @@ async def google_login():
 
 
 @router.get("/google/callback")
-async def google_callback(request: Request, code: str, state: str = ""):
+async def google_callback(request: Request, code: str = None, state: str = "", error: str = None):
+    if error:
+        raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
 
