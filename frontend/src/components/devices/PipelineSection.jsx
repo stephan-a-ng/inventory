@@ -22,11 +22,12 @@ export default function PipelineSection({ stages, devices, productType }) {
       }
     });
 
-  // Find bottleneck: non-terminal stage with highest count
+  // Find bottleneck: non-terminal stage with highest count (only when count > 0)
   const nonTerminalStages = filteredStages.filter((s) => s.name !== 'Deployed');
-  const bottleneckStage = nonTerminalStages.reduce((max, s) => {
-    return (stageCounts[s.id] || 0) > (stageCounts[max?.id] || 0) ? s : max;
-  }, nonTerminalStages[0]);
+  const maxCount = Math.max(0, ...nonTerminalStages.map((s) => stageCounts[s.id] || 0));
+  const bottleneckStage = maxCount > 0
+    ? nonTerminalStages.find((s) => (stageCounts[s.id] || 0) === maxCount)
+    : null;
 
   // Totals
   const totalWIP = nonTerminalStages.reduce((sum, s) => sum + (stageCounts[s.id] || 0), 0);
