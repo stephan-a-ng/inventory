@@ -288,8 +288,8 @@ export default function DeviceDetail() {
       <AppSidebar />
       <main style={{ flex: 1, minWidth: 0 }}>
         <div className="device-details-page">
-          <button type="button" className="back" onClick={() => navigate(`/devices/${id}`)}>
-            <ArrowLeft size={12} /> Back to overview
+          <button type="button" className="back" onClick={() => navigate('/devices')}>
+            <ArrowLeft size={12} /> Back to devices
           </button>
 
           {/* header strip */}
