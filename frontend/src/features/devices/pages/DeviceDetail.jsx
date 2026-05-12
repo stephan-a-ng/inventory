@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Clock, Download, Edit } from 'lucide-react';
 import AppSidebar from '@/shared/components/layout/AppSidebar';
@@ -6,6 +6,7 @@ import DeviceForm from '@/features/devices/components/DeviceForm';
 import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
 import useAuth from '@/features/auth/useAuth';
 import { formatRelativeTime } from '@/features/audit/utils/relativeTime';
+import { useAutoSave, formatSavedAt } from '@/features/buildSteps/lib/useAutoSave';
 import './DeviceDetail.css';
 
 const FIRMWARE_NAMES = new Set(['firmware']);
@@ -140,6 +141,8 @@ export default function DeviceDetail() {
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [activeStageId, setActiveStageId] = useState(null);
+  // Local-edit copy of device.notes, autosaved via PATCH.
+  const [notesDraft, setNotesDraft] = useState('');
   // Stage we're about to advance to — when set, the confirm modal is open.
   const [pendingAdvance, setPendingAdvance] = useState(null);
   const [advancing, setAdvancing] = useState(false);
@@ -162,6 +165,7 @@ export default function DeviceDetail() {
       if (deviceRes.ok) {
         const d = await deviceRes.json();
         setDevice(d);
+        setNotesDraft(d.notes || '');
         if (stagesRes.ok) {
           const all = await stagesRes.json();
           const filtered = all
@@ -226,6 +230,27 @@ export default function DeviceDetail() {
     () => buildStageWindows(stages, audit, device?.created_at, device?.current_stage_id),
     [stages, audit, device?.created_at, device?.current_stage_id],
   );
+
+  // Autosave the notes textarea against the device row. Debounced 800 ms so
+  // techs don't pile up requests while typing. Declared above the early
+  // returns so hook order is stable across loading transitions.
+  const saveNotes = useCallback(
+    async (value) => {
+      const res = await fetch(`/api/devices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ notes: value || null }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `${res.status} ${res.statusText}`);
+      }
+      setDevice((d) => (d ? { ...d, notes: value || null } : d));
+    },
+    [id],
+  );
+  const notesSave = useAutoSave({ value: notesDraft, onSave: saveNotes, delay: 800 });
 
   if (loading) {
     return (
@@ -375,7 +400,20 @@ export default function DeviceDetail() {
                     Stage {pad2(activeIdx + 1)}
                     {activeStatus === 'current' && ' · Now'}
                   </div>
-                  <h2 id={`stage-${activeStage.id}-title`}>{activeStage.name}</h2>
+                  <div className="title-row">
+                    <h2 id={`stage-${activeStage.id}-title`}>{activeStage.name}</h2>
+                    {stageKey && (
+                      <button
+                        type="button"
+                        className="instructions-link"
+                        onClick={() => navigate(`/devices/${id}/stages/${stageKey}`)}
+                        aria-label={`Open ${stageKey.toLowerCase()} instructions walkthrough`}
+                      >
+                        Instructions
+                        <ArrowRight size={22} strokeWidth={2} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="r">
                   <StatusChip status={activeStatus} />
@@ -423,57 +461,32 @@ export default function DeviceDetail() {
                 </div>
               </div>
 
-              {/* notes — show only on current stage if present */}
-              {activeStatus === 'current' && device.notes && (
-                <div className="note">
-                  <strong>Notes</strong> — {device.notes}
-                </div>
-              )}
-
-              {/* build-step walkthrough — links into the per-step worker view */}
-              {stageKey && (
-                <div style={{
-                  marginTop: 18,
-                  border: '1px solid var(--m5-rule)',
-                  background: 'var(--m5-cream-deep)',
-                  padding: '14px 18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  justifyContent: 'space-between',
-                }}>
-                  <div>
-                    <div style={{
-                      fontFamily: 'var(--m5-font-mono)',
-                      fontSize: 10.5,
-                      letterSpacing: '0.14em',
-                      textTransform: 'uppercase',
-                      color: 'var(--m5-muted)',
-                      marginBottom: 4,
-                    }}>Walkthrough</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--m5-ink)' }}>
-                      Step-by-step {stageKey.toLowerCase()} instructions
-                    </div>
+              {/* Notes — editable, autosaved into device.notes. Shown on the
+                  Assembly panel only for now; build-step level notes will
+                  arrive when authored steps grow input types. */}
+              {stageKey === 'Assembly' && (
+                <div className="sec notes-sec">
+                  <div className="sh">
+                    <h3>
+                      <span className="yb" />
+                      Notes
+                    </h3>
+                    <span className="sub" role="status" aria-live="polite">
+                      {notesSave.state === 'saving' && 'Saving…'}
+                      {notesSave.state === 'saved' && notesSave.savedAt
+                        && `Saved · ${formatSavedAt(notesSave.savedAt)}`}
+                      {notesSave.state === 'error' && (notesSave.error?.message || 'Save failed')}
+                    </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/devices/${id}/stages/${stageKey}`)}
-                    style={{
-                      padding: '10px 16px',
-                      background: 'var(--m5-yellow)',
-                      color: 'var(--m5-ink)',
-                      border: '1px solid var(--m5-ink)',
-                      fontWeight: 700,
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      borderRadius: 0,
-                    }}
-                  >
-                    Open walkthrough <span aria-hidden>→</span>
-                  </button>
+                  <textarea
+                    className="notes-textarea"
+                    value={notesDraft}
+                    onChange={(e) => setNotesDraft(e.target.value)}
+                    onBlur={notesSave.flush}
+                    placeholder={canEdit ? 'Capture any assembly notes — saves as you type.' : 'No notes recorded.'}
+                    disabled={!canEdit}
+                    rows={3}
+                  />
                 </div>
               )}
 
