@@ -97,7 +97,7 @@ upload and serves via 5-minute v4 signed URLs.
 | Cloud Run service account | `inventory-api@moonfive-crm.iam.gserviceaccount.com` | `inventory-api@moonfive-crm.iam.gserviceaccount.com` (one SA, dual-bound) |
 | Bucket IAM grant | `roles/storage.objectAdmin` on bucket only | `roles/storage.objectAdmin` on bucket only |
 | Self-binding (for `signBlob`) | `roles/iam.serviceAccountTokenCreator` on `inventory-api@...` | same |
-| Lifecycle | `Age > 30d` → `Delete` | `Age > 90d` → `Nearline` (no auto-delete) |
+| Lifecycle | none — photos persist | none — photos persist |
 | Public access prevention | `enforced` | `enforced` |
 | Uniform bucket-level access | `on` | `on` |
 
@@ -136,21 +136,10 @@ gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
   --member=serviceAccount:inventory-api@moonfive-crm.iam.gserviceaccount.com \
   --role=roles/storage.objectAdmin
 
-# 5. Lifecycle (staging — auto-delete after 30 days):
-cat > /tmp/lifecycle.json <<'JSON'
-{ "lifecycle": { "rule": [ { "action": { "type": "Delete" },
-  "condition": { "age": 30 } } ] } }
-JSON
-gcloud storage buckets update gs://moonfive-inventory-photos-staging \
-  --lifecycle-file=/tmp/lifecycle.json
-
-# 5b. Lifecycle (production — Nearline after 90 days):
-cat > /tmp/lifecycle.json <<'JSON'
-{ "lifecycle": { "rule": [ { "action": { "type": "SetStorageClass",
-  "storageClass": "NEARLINE" }, "condition": { "age": 90 } } ] } }
-JSON
-gcloud storage buckets update gs://moonfive-inventory-photos-production \
-  --lifecycle-file=/tmp/lifecycle.json
+# 5. No lifecycle rules — photos are commissioning records and persist
+#    indefinitely (~10 GB of build photos costs cents/month on Standard).
+#    If retention rules become necessary later, add them with
+#    `--lifecycle-file`; clear them with `--clear-lifecycle`.
 ```
 
 The deploy script wires `GCS_BUCKET` and `GCS_SIGNER_SA_EMAIL` via
