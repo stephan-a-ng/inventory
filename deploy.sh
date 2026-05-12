@@ -29,6 +29,13 @@ STAGING_WEB_URL=https://inventory-frontend-staging-329274314764.us-central1.run.
 PROD_API_URL=https://inventory-api-production-329274314764.us-central1.run.app
 PROD_WEB_URL=https://inventory-frontend-production-329274314764.us-central1.run.app
 
+# Public-facing custom domain for production. Cloud Run domain-mapping points
+# this at inventory-frontend-production. FRONTEND_URL + GOOGLE_REDIRECT_URI
+# must use this so the oauth_state cookie set on the public domain survives
+# the round-trip back from Google's consent screen — using the *.run.app
+# URL for the callback would cookie-domain-mismatch the state.
+PROD_PUBLIC_URL=https://inventory.moonfive.tech
+
 # ---------------------------------------------------------------------------
 # OAuth client IDs — one per environment, DO NOT swap these
 #
@@ -40,7 +47,7 @@ PROD_WEB_URL=https://inventory-frontend-production-329274314764.us-central1.run.
 #
 # Redirect URIs registered in Google Cloud Console:
 #   Staging:    $STAGING_WEB_URL/api/auth/google/callback
-#   Production: $PROD_WEB_URL/api/auth/google/callback
+#   Production: $PROD_PUBLIC_URL/api/auth/google/callback  (custom domain)
 # ---------------------------------------------------------------------------
 
 usage() {
@@ -207,8 +214,8 @@ elif [[ "$ENV" == "production" ]]; then
 
   deploy_backend \
     "$PROD_API" \
-    "$PROD_WEB_URL" \
-    "${PROD_WEB_URL}/api/auth/google/callback" \
+    "$PROD_PUBLIC_URL" \
+    "${PROD_PUBLIC_URL}/api/auth/google/callback" \
     inventory-database-url-production \
     inventory-jwt-secret-production \
     inventory-google-client-id-production \
@@ -219,7 +226,7 @@ elif [[ "$ENV" == "production" ]]; then
     "$PROD_PHOTO_BUCKET"
 
   deploy_frontend "$PROD_WEB" "inventory-frontend-production" "$PROD_API_URL" "$INSTALLER_APP_URL_SCHEME"
-  health_check "$PROD_API_URL" "$PROD_WEB_URL"
+  health_check "$PROD_API_URL" "$PROD_PUBLIC_URL"
   echo ""
-  echo "Production: $PROD_WEB_URL"
+  echo "Production: $PROD_PUBLIC_URL"
 fi
