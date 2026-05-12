@@ -25,7 +25,7 @@ const sampleDevice = {
   id: 'dev-1',
   mac_address: 'A4:CF:12:8B:3D:E2',
   device_name: 'CHG-2406-0817',
-  product_type: 'CHARGER',
+  product_type: 'EVSE',
   current_stage_name: 'Calibration',
 };
 
@@ -81,7 +81,7 @@ describe('<DeviceFinder />', () => {
 
     await waitFor(() => expect(screen.getByText(/match found/i)).toBeInTheDocument());
     expect(screen.getByText('CHG-2406-0817')).toBeInTheDocument();
-    expect(screen.getByText('EVSE')).toBeInTheDocument(); // CHARGER → EVSE label
+    expect(screen.getByText('EVSE')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /open device/i }));
     expect(navigateMock).toHaveBeenCalledWith('/devices/dev-1');
@@ -106,7 +106,7 @@ describe('<DeviceFinder />', () => {
     await waitFor(() =>
       expect(registerDevice).toHaveBeenCalledWith({
         mac_address: 'AA:BB:CC:DD:EE:FF',
-        product_type: 'CHARGER',
+        product_type: 'EVSE',
       }),
     );
     expect(fetchStats).toHaveBeenCalled();

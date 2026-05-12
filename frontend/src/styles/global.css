@@ -81,6 +81,7 @@ html {
   --m5-green: oklch(0.58 0.13 150);
   --m5-red: oklch(0.58 0.18 25);
   --m5-font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --m5-page-max: 1120px;
 }
 
 /* Smooth theme transitions */

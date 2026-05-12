@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.shared.db import DatabasePool
 from app.shared.encryption import decrypt_pop, encrypt_pop
+from app.shared.uuid7 import uuid7
 
 from .pop_service import generate_pop
 
@@ -14,7 +15,7 @@ class DeviceNotFoundError(Exception):
 
 
 class DevicePopMissingError(Exception):
-    """Raised when a device exists but has no PoP (legacy or non-charger row)."""
+    """Raised when a device exists but has no PoP (legacy or non-EVSE row)."""
 
 
 class DeviceService:
@@ -94,27 +95,37 @@ class DeviceService:
             if first_stage:
                 data["current_stage_id"] = first_stage["id"]
 
-        # PoP generated only for chargers; included in the create response so the
-        # factory tool can flash it. The plaintext value is returned alongside the
-        # row but never persisted in plaintext form.
+        # Auto-assign a Moon Five serial when one isn't supplied.
+        # See docs/claude/SERIAL-NUMBERS.md for the format.
+        if not data.get("serial_number"):
+            from .serial_service import next_serial, PRODUCT_FAMILY  # local import to avoid cycle on import
+            if product_type in PRODUCT_FAMILY:
+                data["serial_number"] = await next_serial(product_type)
+
+        # PoP generated only for EVSE chargers; included in the create
+        # response so the factory tool can flash it. Plaintext returned
+        # alongside the row but never persisted in plaintext form.
         pop_plaintext: str | None = None
         pop_ciphertext: str | None = None
         pop_generated_at: datetime | None = None
-        if product_type == "CHARGER":
+        if product_type == "EVSE":
             pop_plaintext = generate_pop()
             pop_ciphertext = encrypt_pop(pop_plaintext)
             pop_generated_at = datetime.now(timezone.utc)
 
-        # Auto-generate device name atomically to avoid race conditions
+        # Primary key is a UUIDv7 minted in app code (time-ordered; see
+        # docs/claude/SERIAL-NUMBERS.md for the separation between this
+        # opaque UUID and the human-readable serial). device_name is auto-
+        # generated atomically from product_type + the next sequence number.
         row = await DatabasePool.fetchrow(
             """WITH next_seq AS (
                    SELECT COALESCE(MAX(sequence_number), 0) + 1 AS seq
                    FROM devices WHERE product_type = $2
                )
-               INSERT INTO devices (mac_address, product_type, serial_number, firmware_version,
+               INSERT INTO devices (id, mac_address, product_type, serial_number, firmware_version,
                    hardware_revision, current_stage_id, location, site_name, notes,
                    device_name, sequence_number, pop, pop_generated_at)
-               SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9,
+               SELECT $12, $1, $2, $3, $4, $5, $6, $7, $8, $9,
                    $2 || '-' || LPAD(next_seq.seq::text, 4, '0'), next_seq.seq, $10, $11
                FROM next_seq
                RETURNING *""",
@@ -122,7 +133,9 @@ class DeviceService:
             data.get("firmware_version"), data.get("hardware_revision"),
             data.get("current_stage_id"), data.get("location"),
             data.get("site_name"), data.get("notes"),
-            pop_ciphertext, pop_generated_at,
+            pop_ciphertext,        # $10
+            pop_generated_at,      # $11
+            uuid7(),               # $12 (id)
         )
         result = dict(row)
         if pop_plaintext is not None:
@@ -155,7 +168,7 @@ class DeviceService:
         """Generate a new PoP for the device, save encrypted. Raises DeviceNotFoundError.
 
         Returns the plaintext PoP + metadata + rotated_from_existing flag.
-        Allowed only for CHARGER devices (enforced by the pop_only_for_chargers CHECK).
+        Allowed only for EVSE devices (enforced by the pop_only_for_chargers CHECK).
         """
         existing = await DatabasePool.fetchrow(
             """SELECT id, mac_address, device_name, product_type, pop
@@ -164,9 +177,9 @@ class DeviceService:
         )
         if not existing:
             raise DeviceNotFoundError(mac_address)
-        if existing["product_type"] != "CHARGER":
+        if existing["product_type"] != "EVSE":
             raise DevicePopMissingError(
-                f"PoP is only supported for CHARGER devices, not {existing['product_type']}"
+                f"PoP is only supported for EVSE devices, not {existing['product_type']}"
             )
 
         rotated_from_existing = existing["pop"] is not None

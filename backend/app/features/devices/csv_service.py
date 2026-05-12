@@ -5,9 +5,10 @@ import re
 from typing import Optional
 from uuid import UUID
 from app.shared.db import DatabasePool
+from app.shared.uuid7 import uuid7
 
 MAC_PATTERN = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
-VALID_PRODUCT_TYPES = {"AEMS", "BEMS", "CHARGER", "NETWORKING"}
+VALID_PRODUCT_TYPES = {"AEMS", "BEMS", "EVSE", "NETWORKING"}
 
 EXPORT_COLUMNS = [
     "mac_address", "product_type", "serial_number", "firmware_version",
@@ -85,10 +86,13 @@ class CsvService:
                 )
                 stage_id = first_stage["id"] if first_stage else None
 
+                # Mint a UUIDv7 in app code so imported rows share the same
+                # primary-key generation strategy as interactive creates.
                 await DatabasePool.execute(
-                    """INSERT INTO devices (mac_address, product_type, serial_number, firmware_version,
+                    """INSERT INTO devices (id, mac_address, product_type, serial_number, firmware_version,
                            hardware_revision, current_stage_id, location, site_name, notes)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                    uuid7(),
                     row["mac_address"], row["product_type"], row.get("serial_number"),
                     row.get("firmware_version"), row.get("hardware_revision"),
                     stage_id, row.get("location"), row.get("site_name"), row.get("notes"),

@@ -68,4 +68,4 @@ export const productTabBtn = (type, activeValue) => ({
   borderRadius: 0,
 });
 
-export const PRODUCT_TYPES = ['AEMS', 'BEMS', 'CHARGER', 'NETWORKING'];
+export const PRODUCT_TYPES = ['AEMS', 'BEMS', 'EVSE', 'NETWORKING'];

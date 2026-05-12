@@ -7,9 +7,9 @@ import { PRODUCT_TYPES, PRODUCT_DESC, labelFor } from '@/features/devices/lib/pr
 
 const MAC_RE = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
 
-// MoonFive's first product line in the picker is the EVSE (CHARGER) since
-// charger units are the highest-volume registration on the dashboard.
-const PICK_ORDER = ['CHARGER', 'AEMS', 'BEMS', 'NETWORKING'];
+// MoonFive's first product line in the picker is the EVSE since charger
+// units are the highest-volume registration on the dashboard.
+const PICK_ORDER = ['EVSE', 'AEMS', 'BEMS', 'NETWORKING'];
 
 export default function DeviceFinder() {
   const navigate = useNavigate();
@@ -18,7 +18,7 @@ export default function DeviceFinder() {
   const [mode, setMode] = useState('idle'); // idle | manual | found | notfound
   const [mac, setMac] = useState('');
   const [found, setFound] = useState(null);
-  const [type, setType] = useState('CHARGER');
+  const [type, setType] = useState('EVSE');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -26,7 +26,7 @@ export default function DeviceFinder() {
     setMode('idle');
     setMac('');
     setFound(null);
-    setType('CHARGER');
+    setType('EVSE');
     setError('');
     setBusy(false);
   }

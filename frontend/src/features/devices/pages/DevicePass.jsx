@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import AppSidebar from '@/shared/components/layout/AppSidebar';
-import useAuth from '@/features/auth/useAuth';
 import { formatRelativeTime } from '@/features/audit/utils/relativeTime';
 
 import './DevicePass.css';
@@ -116,17 +115,13 @@ function HistoryItem({ entry, stagesById }) {
 
 export default function DevicePass() {
   const { id } = useParams();
-  const { user } = useAuth();
   const [device, setDevice] = useState(null);
   const [stages, setStages] = useState([]);
   const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editingSerial, setEditingSerial] = useState(false);
-  const [serialDraft, setSerialDraft] = useState('');
-  const [savingSerial, setSavingSerial] = useState(false);
-  const [serialError, setSerialError] = useState(null);
-  const serialInputRef = useRef(null);
-  const canEdit = user?.role === 'admin' || user?.role === 'technician';
+  // Field name (e.g. "serial" or "mac") that was most recently copied —
+  // drives the brief "Copied" affordance on the stub.
+  const [copied, setCopied] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,58 +204,35 @@ export default function DevicePass() {
     });
   }, [stages, transitions, currentStage]);
 
-  function startEditSerial() {
-    if (!canEdit || !device) return;
-    setSerialDraft(device.serial_number || '');
-    setSerialError(null);
-    setEditingSerial(true);
-  }
-
-  function cancelEditSerial() {
-    setEditingSerial(false);
-    setSerialError(null);
-  }
-
-  async function commitSerial() {
-    if (!device || savingSerial) return;
-    const trimmed = serialDraft.trim();
-    const current = device.serial_number || '';
-    if (trimmed === current) {
-      cancelEditSerial();
-      return;
-    }
-    setSavingSerial(true);
+  async function copyToClipboard(value, field) {
+    if (!value) return;
     try {
-      const res = await fetch(`/api/devices/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ serial_number: trimmed || null }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setDevice(updated);
-        setEditingSerial(false);
-        // Refresh audit so the rename appears in history.
-        const auditRes = await fetch(`/api/audit/${id}`, { credentials: 'include' });
-        if (auditRes.ok) setAudit(await auditRes.json());
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
       } else {
-        const body = await res.json().catch(() => ({}));
-        setSerialError(body.detail || 'Could not save serial');
+        // Fallback for older browsers / non-secure contexts.
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
       }
-    } catch (err) {
-      setSerialError('Network error');
-    } finally {
-      setSavingSerial(false);
+      setCopied(field);
+    } catch {
+      // Swallow — clipboard permission can fail in odd environments and
+      // there's nothing useful we can do here.
     }
   }
 
   useEffect(() => {
-    if (editingSerial) {
-      serialInputRef.current?.focus();
-      serialInputRef.current?.select();
-    }
-  }, [editingSerial]);
+    if (!copied) return undefined;
+    const t = setTimeout(() => setCopied(null), 1400);
+    return () => clearTimeout(t);
+  }, [copied]);
 
   if (loading) {
     return (
@@ -297,7 +269,7 @@ export default function DevicePass() {
       <AppSidebar />
       <main className="dp-main">
         <div className="dp-page">
-          <Link to="/" className="dp-back">← Back to inventory</Link>
+          <Link to="/devices" className="dp-back">← Back to devices</Link>
 
           <section className="pass">
             <div className="stub-edge" aria-hidden="true" />
@@ -412,56 +384,35 @@ export default function DevicePass() {
                       </svg>
                     </Link>
                   </span>
-                  {canEdit && !editingSerial && (
-                    <button
-                      type="button"
-                      className="serial-edit-hint"
-                      onClick={startEditSerial}
-                      aria-label="Edit serial"
-                    >
-                      Edit
-                    </button>
-                  )}
+                  <span className={`copy-hint${copied === 'serial' ? ' is-on' : ''}`} aria-live="polite">
+                    {copied === 'serial' ? 'Copied' : 'Copy'}
+                  </span>
                 </div>
-                {editingSerial ? (
-                  <>
-                    <input
-                      ref={serialInputRef}
-                      className="serial serial-input"
-                      value={serialDraft}
-                      onChange={(e) => setSerialDraft(e.target.value)}
-                      onBlur={commitSerial}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          e.currentTarget.blur();
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault();
-                          cancelEditSerial();
-                        }
-                      }}
-                      disabled={savingSerial}
-                      placeholder="—"
-                      spellCheck={false}
-                      autoCapitalize="characters"
-                    />
-                    {serialError && <div className="serial-error">{serialError}</div>}
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className={`serial serial-display${canEdit ? ' is-editable' : ''}`}
-                    onClick={startEditSerial}
-                    disabled={!canEdit}
-                    title={canEdit ? 'Click to edit' : undefined}
-                  >
-                    {device.serial_number || '—'}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="serial serial-display is-copyable"
+                  onClick={() => copyToClipboard(device.serial_number, 'serial')}
+                  disabled={!device.serial_number}
+                  title={device.serial_number ? 'Click to copy' : undefined}
+                >
+                  {device.serial_number || '—'}
+                </button>
               </div>
               <div className="field">
-                <div className="lbl">MAC</div>
-                <div className="mac">{device.mac_address}</div>
+                <div className="lbl">
+                  <span className="lbl-text">MAC</span>
+                  <span className={`copy-hint${copied === 'mac' ? ' is-on' : ''}`} aria-live="polite">
+                    {copied === 'mac' ? 'Copied' : 'Copy'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="mac mac-display is-copyable"
+                  onClick={() => copyToClipboard(device.mac_address, 'mac')}
+                  title="Click to copy"
+                >
+                  {device.mac_address}
+                </button>
               </div>
               <div className="field">
                 <div className="lbl">Type</div>

@@ -43,3 +43,6 @@ htmlcov/
 
 # Claude Code / Superpowers
 .superpowers/
+
+# Claude Code worktrees and runtime data
+.claude/

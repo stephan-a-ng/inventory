@@ -49,6 +49,7 @@ This is **not** the canonical MoonFive Next.js stack. See [DECISIONS.md](DECISIO
 | [SECURITY.md](SECURITY.md) | Handling any secret/credential — frontend exposure rules, API-key restrictions, Cloud Run SA hygiene |
 | [BRAND.md](BRAND.md) | Visual / UI work — palette, typography, spacing, component patterns |
 | [DOMAIN.md](DOMAIN.md) | Anything touching Device, Stage, Subsystem, BoardRevision, AuditLog, User |
+| [SERIAL-NUMBERS.md](SERIAL-NUMBERS.md) | Auto-generating, validating, or displaying device serial numbers (M5-XXX-Gn-YYWWNN format with Luhn check) |
 | [DECISIONS.md](DECISIONS.md) | Debugging odd choices ("why no ORM? why no Next.js? why schema.sql not Alembic?") |
 | [ROADMAP.md](ROADMAP.md) | Future upgrades not yet scheduled |
 

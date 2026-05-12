@@ -22,7 +22,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/inventory
       JWT_SECRET: dev-secret-key-change-in-production
-      FRONTEND_URL: http://localhost:5173
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5180}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: http://localhost:8000/api/auth/google/callback
@@ -50,7 +50,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "5173:8080"
+      - "5180:8080"
     depends_on:
       - backend
 

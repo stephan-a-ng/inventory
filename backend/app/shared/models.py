@@ -5,5 +5,5 @@ from enum import Enum
 class ProductType(str, Enum):
     AEMS = "AEMS"
     BEMS = "BEMS"
-    CHARGER = "CHARGER"
+    EVSE = "EVSE"
     NETWORKING = "NETWORKING"

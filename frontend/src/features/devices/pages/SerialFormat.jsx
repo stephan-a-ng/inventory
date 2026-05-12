@@ -87,6 +87,53 @@ function PreviewBox() {
   );
 }
 
+function FormatSection() {
+  const [activeIdx, setActiveIdx] = useState(null);
+
+  const handlers = (idx) => ({
+    onMouseEnter: () => setActiveIdx(idx),
+    onMouseLeave: () => setActiveIdx((cur) => (cur === idx ? null : cur)),
+    onFocus: () => setActiveIdx(idx),
+    onBlur: () => setActiveIdx((cur) => (cur === idx ? null : cur)),
+  });
+
+  return (
+    <section className="sf-section">
+      <div className="sf-section-head">Format</div>
+      <pre className="sf-code">
+        {SEGMENTS.map((s, idx) => (
+          <span key={s.label}>
+            {idx > 0 && <span className="sf-code-sep">-</span>}
+            <button
+              type="button"
+              className={`sf-code-seg${activeIdx === idx ? ' is-active' : ''}`}
+              aria-label={`${s.label} — ${s.name}`}
+              {...handlers(idx)}
+            >
+              {s.label}
+            </button>
+          </span>
+        ))}
+      </pre>
+      <div className="sf-segments">
+        {SEGMENTS.map((s, idx) => (
+          <div
+            className={`sf-segment${activeIdx === idx ? ' is-active' : ''}`}
+            key={s.label}
+            {...handlers(idx)}
+          >
+            <div className="sf-segment-label">{s.label}</div>
+            <div className="sf-segment-body">
+              <div className="sf-segment-name">{s.name}</div>
+              <div className="sf-segment-detail">{s.detail}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function SerialFormat() {
   return (
     <div className="sf-shell">
@@ -111,21 +158,7 @@ export default function SerialFormat() {
             </p>
           </header>
 
-          <section className="sf-section">
-            <div className="sf-section-head">Format</div>
-            <pre className="sf-code">M5-BEM-G2-26W19-A-001234-C</pre>
-            <div className="sf-segments">
-              {SEGMENTS.map((s) => (
-                <div className="sf-segment" key={s.label}>
-                  <div className="sf-segment-label">{s.label}</div>
-                  <div className="sf-segment-body">
-                    <div className="sf-segment-name">{s.name}</div>
-                    <div className="sf-segment-detail">{s.detail}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <FormatSection />
 
           <section className="sf-section">
             <div className="sf-section-head">Examples</div>

@@ -33,7 +33,7 @@
 
 .dp-page {
   padding: 56px 48px 72px;
-  max-width: 1100px;
+  max-width: var(--m5-page-max);
   margin: 0 auto;
 }
 .dp-back {
@@ -331,71 +331,58 @@
   outline: 2px solid var(--m5-yellow);
   outline-offset: 2px;
 }
-.serial-edit-hint {
+.copy-hint {
   font-family: var(--m5-font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--m5-muted);
-  background: transparent;
-  border: none;
-  cursor: pointer;
+  color: transparent;
   padding: 2px 4px;
-  margin: 0;
+  transition: color 0.12s ease;
+  user-select: none;
 }
-.serial-edit-hint:hover { color: var(--m5-ink); }
+.pass .stub .field:hover .copy-hint { color: var(--m5-muted); }
+.copy-hint.is-on { color: var(--m5-yellow-deep, #e6bc00); }
 
-button.serial.serial-display {
+button.serial.serial-display,
+button.mac.mac-display {
   background: transparent;
   border: none;
   padding: 0;
   margin: 0;
   text-align: left;
-  cursor: default;
   display: block;
   width: 100%;
   font: inherit;
+  color: var(--m5-ink);
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.12s ease, color 0.12s ease;
+  cursor: pointer;
+}
+button.serial.serial-display {
   font-family: var(--m5-font-mono);
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--m5-ink);
-  border-bottom: 1px dashed transparent;
-  transition: border-color 0.12s ease, background 0.12s ease;
 }
-button.serial.serial-display.is-editable { cursor: text; }
-button.serial.serial-display.is-editable:hover {
+button.mac.mac-display {
+  font-family: var(--m5-font-mono);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--m5-ink-soft);
+}
+button.serial.is-copyable:hover,
+button.mac.is-copyable:hover {
   border-bottom-color: var(--m5-ink);
 }
-button.serial.serial-display:focus-visible {
+button.serial.is-copyable:focus-visible,
+button.mac.is-copyable:focus-visible {
   outline: 2px solid var(--m5-yellow);
   outline-offset: 2px;
 }
-
-.serial.serial-input {
-  display: block;
-  width: 100%;
-  font-family: var(--m5-font-mono);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--m5-ink);
-  background: var(--m5-cream);
-  border: none;
-  border-bottom: 1px solid var(--m5-ink);
-  padding: 0 0 2px;
-  outline: none;
-  border-radius: 0;
-}
-.serial.serial-input:focus { border-bottom-color: var(--m5-yellow); }
-.serial.serial-input:disabled { opacity: 0.6; }
-.serial-error {
-  margin-top: 6px;
-  font-family: var(--m5-font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  color: var(--m5-red);
-}
+button.serial:disabled,
+button.mac:disabled { cursor: default; opacity: 0.7; }
 .pass .stub .mac {
   font-family: var(--m5-font-mono);
   font-size: 16px;

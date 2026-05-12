@@ -1,7 +1,28 @@
 """asyncpg connection pool"""
+import json
 import os
 import asyncpg
 from app.shared.config import DATABASE_URL
+
+
+async def _register_codecs(conn):
+    """Per-connection codecs. Without these, JSONB columns come back as raw
+    JSON strings — a common source of `Object.keys(stringValue)` bugs on
+    the frontend (the audit log's old_value/new_value, for instance).
+    """
+    await conn.set_type_codec(
+        'jsonb',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog',
+    )
+    await conn.set_type_codec(
+        'json',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog',
+    )
+
 
 class DatabasePool:
     _pool = None
@@ -21,6 +42,7 @@ class DatabasePool:
         cls._pool = await asyncpg.create_pool(
             url, min_size=1, max_size=5,
             server_settings={'search_path': 'inventory'},
+            init=_register_codecs,
         )
 
     @classmethod

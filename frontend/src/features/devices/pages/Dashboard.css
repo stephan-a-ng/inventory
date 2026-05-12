@@ -22,7 +22,7 @@
 
 /* ───────── Top header strip ───────── */
 .dashboard-v2 header.top {
-  max-width: 1120px;
+  max-width: var(--m5-page-max);
   width: 100%;
   margin: 0 auto;
   padding: 32px 48px 0;
@@ -52,7 +52,7 @@
 
 /* ───────── Layout ───────── */
 .dashboard-v2 main {
-  max-width: 1120px;
+  max-width: var(--m5-page-max);
   width: 100%;
   margin: 0 auto;
   padding: 64px 48px 96px;
@@ -524,6 +524,15 @@
   transition: background .1s ease;
 }
 .dashboard-v2 .feed-item:hover { background: var(--m5-cream-deep); }
+.dashboard-v2 .feed-item-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.dashboard-v2 .feed-item-link:focus-visible {
+  outline: 2px solid var(--m5-yellow);
+  outline-offset: -2px;
+}
 .dashboard-v2 .feed-time {
   font-family: var(--m5-font-mono);
   font-size: 12px;

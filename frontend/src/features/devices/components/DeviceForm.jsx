@@ -4,7 +4,7 @@ import { Input } from '@/shared/components/ui/input';
 import { X } from 'lucide-react';
 import useDeviceStore from '@/features/devices/stores/deviceStore';
 
-const PRODUCT_TYPES = ['AEMS', 'BEMS', 'CHARGER', 'NETWORKING'];
+const PRODUCT_TYPES = ['AEMS', 'BEMS', 'EVSE', 'NETWORKING'];
 
 export default function DeviceForm({ device, onClose, onSaved }) {
   const { stages } = useDeviceStore();

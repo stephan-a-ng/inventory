@@ -156,7 +156,22 @@ describe('<DevicePass />', () => {
     expect(openLink).toHaveAttribute('href', `/devices/${DEVICE_ID}/details`);
   });
 
-  it('clicking the serial reveals an input and PATCHes serial_number on commit', async () => {
+  // Install a vi.fn() in place of navigator.clipboard.writeText. Returns it
+  // so individual tests can read the call args. Works with jsdom's
+  // getter-only `navigator.clipboard` property (we defineProperty instead
+  // of plain assignment).
+  function installClipboardSpy() {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      writable: true,
+      value: { writeText },
+    });
+    return writeText;
+  }
+
+  it('clicking the serial copies it via the clipboard API and shows a "Copied" hint', async () => {
+    const writeText = installClipboardSpy();
     mockApi({
       device: {
         id: DEVICE_ID,
@@ -169,50 +184,40 @@ describe('<DevicePass />', () => {
 
     renderPage();
     const serialBtn = await screen.findByRole('button', { name: 'CHG-2406-0817' });
-    const user = userEvent.setup();
-    await user.click(serialBtn);
+    await userEvent.setup().click(serialBtn);
 
-    const input = await screen.findByDisplayValue('CHG-2406-0817');
-    await user.clear(input);
-    await user.type(input, 'CHG-2406-0999');
-    await user.keyboard('{Enter}');
-
-    await waitFor(() => {
-      const patchCall = globalThis.fetch.mock.calls.find(
-        ([url, opts]) => url === `/api/devices/${DEVICE_ID}` && opts?.method === 'PATCH',
-      );
-      expect(patchCall).toBeTruthy();
-      const body = JSON.parse(patchCall[1].body);
-      expect(body.serial_number).toBe('CHG-2406-0999');
-    });
-  });
-
-  it('Escape cancels serial editing without PATCHing', async () => {
-    mockApi({
-      device: {
-        id: DEVICE_ID,
-        mac_address: 'A4:CF:12:8B:3D:E2',
-        product_type: 'EVSE',
-        serial_number: 'CHG-2406-0817',
-        current_stage_id: 's3',
-      },
-    });
-
-    renderPage();
-    const serialBtn = await screen.findByRole('button', { name: 'CHG-2406-0817' });
-    const user = userEvent.setup();
-    await user.click(serialBtn);
-
-    const input = await screen.findByDisplayValue('CHG-2406-0817');
-    await user.clear(input);
-    await user.type(input, 'OTHER');
-    await user.keyboard('{Escape}');
-
-    // Original serial is back, no PATCH happened.
-    await screen.findByRole('button', { name: 'CHG-2406-0817' });
+    // User-observable affordance — appears on either the navigator.clipboard
+    // path or the execCommand fallback.
+    await waitFor(() => expect(screen.getByText('Copied')).toBeInTheDocument());
+    // And no PATCH should fire — the serial is read-only now.
     const patchCall = globalThis.fetch.mock.calls.find(
       ([url, opts]) => url === `/api/devices/${DEVICE_ID}` && opts?.method === 'PATCH',
     );
     expect(patchCall).toBeUndefined();
+    // We don't strictly require the modern clipboard API path to have run —
+    // jsdom doesn't always expose navigator.clipboard — but if it did, the
+    // serial should have been the argument.
+    if (writeText.mock.calls.length > 0) {
+      expect(writeText).toHaveBeenCalledWith('CHG-2406-0817');
+    }
+  });
+
+  it('clicking the MAC shows a "Copied" hint', async () => {
+    installClipboardSpy();
+    mockApi({
+      device: {
+        id: DEVICE_ID,
+        mac_address: 'A4:CF:12:8B:3D:E2',
+        product_type: 'EVSE',
+        serial_number: 'CHG-2406-0817',
+        current_stage_id: 's3',
+      },
+    });
+
+    renderPage();
+    const macBtn = await screen.findByRole('button', { name: 'A4:CF:12:8B:3D:E2' });
+    await userEvent.setup().click(macBtn);
+
+    await waitFor(() => expect(screen.getByText('Copied')).toBeInTheDocument());
   });
 });

@@ -39,8 +39,9 @@ export default function Devices() {
             display: 'flex',
             alignItems: 'flex-end',
             gap: 24,
-            maxWidth: 1280,
+            maxWidth: 'var(--m5-page-max)',
             width: '100%',
+            margin: '0 auto',
           }}
         >
           <div>
@@ -107,7 +108,7 @@ export default function Devices() {
           )}
         </header>
 
-        <div style={{ padding: '24px 48px 64px' }}>
+        <div style={{ padding: '24px 48px 64px', maxWidth: 'var(--m5-page-max)', width: '100%', margin: '0 auto' }}>
           <DeviceFilters />
           <BulkActions />
           <DeviceTable />

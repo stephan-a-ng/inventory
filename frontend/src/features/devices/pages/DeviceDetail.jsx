@@ -144,6 +144,9 @@ export default function DeviceDetail() {
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [activeStageId, setActiveStageId] = useState(null);
+  // Stage we're about to advance to — when set, the confirm modal is open.
+  const [pendingAdvance, setPendingAdvance] = useState(null);
+  const [advancing, setAdvancing] = useState(false);
 
   const canEdit = user?.role === 'admin' || user?.role === 'technician';
 
@@ -223,22 +226,31 @@ export default function DeviceDetail() {
     }
   }
 
-  async function advanceStage() {
+  function requestAdvanceStage() {
     if (!device || !stages.length) return;
     const currentIdx = stages.findIndex((s) => s.id === device.current_stage_id);
     if (currentIdx < 0 || currentIdx >= stages.length - 1) return;
-    const next = stages[currentIdx + 1];
-    if (!confirm(`Advance to ${next.name}?`)) return;
-    const res = await fetch(`/api/devices/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ current_stage_id: next.id }),
-    });
-    if (res.ok) {
-      setActiveStageId(next.id);
-      loadDevice();
-      loadAudit();
+    setPendingAdvance(stages[currentIdx + 1]);
+  }
+
+  async function confirmAdvanceStage() {
+    if (!pendingAdvance || advancing) return;
+    setAdvancing(true);
+    try {
+      const res = await fetch(`/api/devices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ current_stage_id: pendingAdvance.id }),
+      });
+      if (res.ok) {
+        setActiveStageId(pendingAdvance.id);
+        setPendingAdvance(null);
+        loadDevice();
+        loadAudit();
+      }
+    } finally {
+      setAdvancing(false);
     }
   }
 
@@ -341,7 +353,7 @@ export default function DeviceDetail() {
               Download QR
             </button>
             {canEdit && nextStage && (
-              <button type="button" className="btn btn-primary" onClick={advanceStage}>
+              <button type="button" className="btn btn-primary" onClick={requestAdvanceStage}>
                 Advance to {nextStage.name}
                 <span className="arr"><ArrowRight size={14} /></span>
               </button>
@@ -584,6 +596,86 @@ export default function DeviceDetail() {
           }}
         />
       )}
+
+      {pendingAdvance && (
+        <AdvanceStageModal
+          currentStageName={
+            stages.find((s) => s.id === device.current_stage_id)?.name || null
+          }
+          nextStage={pendingAdvance}
+          busy={advancing}
+          onCancel={() => !advancing && setPendingAdvance(null)}
+          onConfirm={confirmAdvanceStage}
+        />
+      )}
+    </div>
+  );
+}
+
+function AdvanceStageModal({ currentStageName, nextStage, busy, onCancel, onConfirm }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape' && !busy) onCancel();
+      if (e.key === 'Enter') onConfirm();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, onConfirm, busy]);
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onCancel();
+      }}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="advance-modal-title"
+      >
+        <div className="modal-eyebrow">
+          <span className="yb" />
+          Confirm · stage advance
+        </div>
+        <h2 id="advance-modal-title" className="modal-title">
+          Advance to <span className="next">{nextStage.name}</span>?
+        </h2>
+        <p className="modal-body">
+          {currentStageName ? (
+            <>
+              This device is currently at <strong>{currentStageName}</strong>. Moving it to{' '}
+              <strong>{nextStage.name}</strong> is recorded in the audit log.
+            </>
+          ) : (
+            <>
+              The device will be moved to <strong>{nextStage.name}</strong>. This is recorded in the audit log.
+            </>
+          )}
+        </p>
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onConfirm}
+            disabled={busy}
+            autoFocus
+          >
+            {busy ? 'Advancing…' : `Advance to ${nextStage.name}`}
+            <span className="arr"><ArrowRight size={14} /></span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

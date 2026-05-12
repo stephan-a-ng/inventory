@@ -9,6 +9,7 @@
  * Renders the design's 4-column row: time · who · what · tag.
  * Visual styles live in features/devices/pages/Dashboard.css under `.dashboard-v2`.
  */
+import { Link } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 
 function relativeTime(iso) {
@@ -119,14 +120,29 @@ export default function ActivityFeed({ entries = [], onViewAll }) {
         {entries.length === 0 ? (
           <div className="feed-empty">No recent activity yet</div>
         ) : (
-          entries.map((entry) => (
-            <div key={entry.id} className="feed-item">
-              <div className="feed-time">{relativeTime(entry.created_at)}</div>
-              <div className="feed-who">{formatWho(entry)}</div>
-              <div className="feed-what">{describe(entry)}</div>
-              <div className="feed-tag">{actionTag(entry.action)}</div>
-            </div>
-          ))
+          entries.map((entry) => {
+            // Linkable when the device still exists — i.e., not after a delete.
+            const linkable = entry.device_id && entry.action !== 'deleted';
+            const rowChildren = (
+              <>
+                <div className="feed-time">{relativeTime(entry.created_at)}</div>
+                <div className="feed-who">{formatWho(entry)}</div>
+                <div className="feed-what">{describe(entry)}</div>
+                <div className="feed-tag">{actionTag(entry.action)}</div>
+              </>
+            );
+            return linkable ? (
+              <Link
+                key={entry.id}
+                className="feed-item feed-item-link"
+                to={`/devices/${entry.device_id}`}
+              >
+                {rowChildren}
+              </Link>
+            ) : (
+              <div key={entry.id} className="feed-item">{rowChildren}</div>
+            );
+          })
         )}
       </div>
     </section>

@@ -139,7 +139,7 @@ async def test_stats_returns_total_and_per_stage(client, auth_user):
     for mac, pt in [
         ("AA:BB:CC:DD:EE:30", "AEMS"),
         ("AA:BB:CC:DD:EE:31", "BEMS"),
-        ("AA:BB:CC:DD:EE:32", "CHARGER"),
+        ("AA:BB:CC:DD:EE:32", "EVSE"),
     ]:
         r = await client.post("/api/devices", json={"mac_address": mac, "product_type": pt})
         assert r.status_code == 200, r.text

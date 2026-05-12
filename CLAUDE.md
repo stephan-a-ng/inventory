@@ -1,6 +1,6 @@
 # MoonFive Inventory Manager
 
-Hardware device inventory tracking system for MoonFive's commissioning pipeline (Assembly → Firmware → Calibration → QA → Staging → Deployed). Tracks devices across product types AEMS, BEMS, CHARGER, and NETWORKING with QR codes, barcode scanning, audit trails, CSV import/export, and bulk operations.
+Hardware device inventory tracking system for MoonFive's commissioning pipeline (Assembly → Firmware → Calibration → QA → Staging → Deployed). Tracks devices across product types AEMS, BEMS, EVSE, and NETWORKING with QR codes, barcode scanning, audit trails, CSV import/export, and bulk operations.
 
 **Stack:** FastAPI + asyncpg backend, React 19 + Vite frontend, PostgreSQL 16, Google OAuth + JWT cookies. Deployed to Cloud Run.
 
@@ -21,6 +21,7 @@ The full engineering docs live under **`docs/claude/`**:
 | [docs/claude/SECURITY.md](docs/claude/SECURITY.md) | Secrets, credentials, trust boundaries |
 | [docs/claude/BRAND.md](docs/claude/BRAND.md) | Visual / UI work — palette, typography, spacing |
 | [docs/claude/DOMAIN.md](docs/claude/DOMAIN.md) | Device, Stage, Subsystem, BoardRevision, AuditLog, User |
+| [docs/claude/SERIAL-NUMBERS.md](docs/claude/SERIAL-NUMBERS.md) | Auto-generating, validating, or displaying device serials |
 | [docs/claude/DECISIONS.md](docs/claude/DECISIONS.md) | ADRs — why we made the choices we did |
 | [docs/claude/ROADMAP.md](docs/claude/ROADMAP.md) | Future upgrades not yet scheduled |
 

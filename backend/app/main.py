@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.features.audit import router as audit_router
 from app.features.auth import router as auth_router
 from app.features.devices import qr_router, router as devices_router
+from app.features.devices.serial_service import backfill_missing_serials
+from app.features.devices.uuid_backfill import backfill_v4_ids_to_v7
 from app.features.stages import router as stages_router
 from app.features.subsystems import board_revision_router, router as subsystems_router
 from app.features.users import router as users_router
@@ -25,6 +27,15 @@ async def lifespan(app: FastAPI):
     schema_path = Path(__file__).parent / "shared" / "schema.sql"
     async with DatabasePool._pool.acquire() as conn:
         await conn.execute(schema_path.read_text())
+    # Backfill any devices created before the serial-generator was wired
+    # in — idempotent, so safe to run on every boot.
+    backfilled = await backfill_missing_serials()
+    if backfilled:
+        print(f"[startup] backfilled {backfilled} device serial(s)")
+    # Migrate legacy v4 primary keys to v7 (cascades via FKs).
+    rewritten = await backfill_v4_ids_to_v7()
+    if rewritten:
+        print(f"[startup] rewrote {rewritten} device id(s) to UUIDv7")
     yield
     await DatabasePool.close()
 
@@ -33,7 +44,7 @@ app = FastAPI(title="MoonFive Inventory", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[FRONTEND_URL, "http://localhost:5173", "http://localhost:5174", "http://localhost:5180", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

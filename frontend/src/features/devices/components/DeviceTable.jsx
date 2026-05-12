@@ -4,7 +4,7 @@ import useDeviceStore from '@/features/devices/stores/deviceStore';
 import { ChevronLeft, ChevronRight, QrCode, MoreHorizontal } from 'lucide-react';
 
 const TYPE_TAG_STYLES = {
-  CHARGER: {
+  EVSE: {
     background: 'var(--m5-ink)',
     color: 'var(--m5-cream)',
     borderColor: 'var(--m5-ink)',

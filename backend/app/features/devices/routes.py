@@ -13,6 +13,12 @@ from .services import (
     DeviceService,
 )
 from .csv_service import CsvService
+from .serial_service import (
+    DEFAULT_GENERATION,
+    DEFAULT_LINE,
+    PRODUCT_FAMILY,
+    next_serial,
+)
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 
@@ -106,6 +112,31 @@ async def create_device(
 @router.get("/stats")
 async def device_stats(user: dict = Depends(get_current_user)):
     return await DeviceService.stats()
+
+
+@router.get("/next-serial")
+async def preview_next_serial(
+    product_type: str = Query(..., description="AEMS | BEMS | EVSE | NETWORKING"),
+    generation: str = Query(DEFAULT_GENERATION, pattern=r"^G\d+$"),
+    line: str = Query(DEFAULT_LINE, pattern=r"^[A-Z]$"),
+    user: dict = Depends(get_current_user),
+):
+    """Preview the next serial that would be assigned for the given inputs.
+
+    Format: M5-{family}-{generation}-{YYWW}-{line}-{seq6}-{check}.
+    See docs/claude/SERIAL-NUMBERS.md for the full convention.
+    """
+    if product_type not in PRODUCT_FAMILY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown product_type {product_type!r}; expected one of {sorted(PRODUCT_FAMILY)}",
+        )
+    return {
+        "serial_number": await next_serial(product_type, generation=generation, line=line),
+        "product_type": product_type,
+        "generation": generation,
+        "line": line,
+    }
 
 
 @router.get("/lookup/{mac_address}")

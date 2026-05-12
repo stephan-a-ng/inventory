@@ -1,24 +1,25 @@
 /**
  * Backend product-type values vs the labels the UI shows.
  *
- * The MoonFive design surfaces "EVSE" for the charger product line. The
- * database column still stores the canonical "CHARGER" string (constraint
- * lives in schema.sql), so all writes/reads use the backend value and only
- * the display layer translates.
+ * The canonical backend value for the charger product line is "EVSE" — the
+ * DB CHECK constraint and ProductType enum both store it this way. (Older
+ * installs that wrote "CHARGER" are migrated to "EVSE" by schema.sql on
+ * startup.) Label and value are identical for now; this file stays for
+ * forward compatibility if we ever want to show different copy.
  */
-export const PRODUCT_TYPES = ['AEMS', 'BEMS', 'CHARGER', 'NETWORKING'];
+export const PRODUCT_TYPES = ['AEMS', 'BEMS', 'EVSE', 'NETWORKING'];
 
 export const PRODUCT_LABEL = {
   AEMS: 'AEMS',
   BEMS: 'BEMS',
-  CHARGER: 'EVSE',
+  EVSE: 'EVSE',
   NETWORKING: 'NETWORKING',
 };
 
 export const PRODUCT_DESC = {
   AEMS: 'Adaptive energy mgmt',
   BEMS: 'Building energy mgmt',
-  CHARGER: 'Charger unit',
+  EVSE: 'Charger unit',
   NETWORKING: 'Networking gear',
 };
 

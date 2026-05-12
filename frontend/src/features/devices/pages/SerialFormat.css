@@ -7,7 +7,7 @@
 
 .sf-page {
   padding: 56px 48px 96px;
-  max-width: 920px;
+  max-width: var(--m5-page-max);
   margin: 0 auto;
 }
 
@@ -86,6 +86,30 @@
   word-break: break-all;
 }
 
+.sf-code-seg {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  margin: 0 -2px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.sf-code-seg:hover,
+.sf-code-seg:focus-visible,
+.sf-code-seg.is-active {
+  background: var(--m5-yellow);
+  color: var(--m5-ink);
+  outline: none;
+}
+.sf-code-sep {
+  color: var(--m5-muted);
+  padding: 0 1px;
+}
+
 .sf-segments {
   display: grid;
   grid-template-columns: 1fr;
@@ -97,9 +121,16 @@
   gap: 18px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--m5-rule);
+  border-left: 3px solid transparent;
   align-items: baseline;
+  cursor: default;
+  transition: background-color 120ms ease, border-left-color 120ms ease;
 }
 .sf-segment:last-child { border-bottom: none; }
+.sf-segment.is-active {
+  background: color-mix(in oklch, var(--m5-yellow) 18%, transparent);
+  border-left-color: var(--m5-yellow);
+}
 .sf-segment-label {
   font-family: var(--m5-font-mono);
   font-size: 15px;
