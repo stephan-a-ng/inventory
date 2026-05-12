@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.shared.models import ProductType
 
-StageKey = Literal["Assembly", "Firmware", "Calibration"]
+StageKey = Literal["Assembly", "Firmware", "Calibration", "QA", "Staging"]
 
 
 # ── product_revisions ────────────────────────────────────────────────────────

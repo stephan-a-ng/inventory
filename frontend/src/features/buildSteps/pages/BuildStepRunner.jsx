@@ -10,6 +10,7 @@ import {
   deleteDevicePhoto,
 } from '../lib/api';
 import useCameraCapture, { isCameraSupported } from '../hooks/useCameraCapture';
+import VersionIndicator from '../components/VersionIndicator';
 import './BuildStepRunner.css';
 
 export default function BuildStepRunner() {
@@ -136,6 +137,14 @@ export default function BuildStepRunner() {
                   <div className="lbl"><span className="yb" />Build step</div>
                   <h1>{current.step.title}</h1>
                   {current.step.description && <p>{current.step.description}</p>}
+                  {view?.instruction_set && (
+                    <div style={{ marginTop: 12 }}>
+                      <VersionIndicator
+                        pinned={view.instruction_set}
+                        active={view.active_instruction_set}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="r">
                   <div className="lbl-r">Step</div>

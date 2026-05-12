@@ -474,7 +474,7 @@ async def worker_view(
     stage_key: str,
     user: dict = Depends(get_current_user),
 ):
-    if stage_key not in {"Assembly", "Firmware", "Calibration"}:
+    if stage_key not in {"Assembly", "Firmware", "Calibration", "QA", "Staging"}:
         raise HTTPException(status_code=400, detail="Invalid stage_key")
     # Resolve the device + revision once.
     from app.features.devices.services import DeviceService  # local import to avoid cycle on import
@@ -494,11 +494,14 @@ async def worker_view(
     pinned_set = await DeviceProgressService.resolve_pinned_set(
         device_id, revision["id"], stage_key,
     )
+    active_set = await InstructionSetService.get_active(revision["id"], stage_key)
     if not pinned_set:
         return {
             "device_id": str(device_id), "stage_key": stage_key,
             "revision": _ser_revision(revision),
-            "instruction_set": None, "steps": [],
+            "instruction_set": None,
+            "active_instruction_set": _ser_set(active_set) if active_set else None,
+            "steps": [],
         }
 
     merged = await DeviceProgressService.get_worker_view(device_id, pinned_set["id"])
@@ -507,6 +510,10 @@ async def worker_view(
         "stage_key": stage_key,
         "revision": _ser_revision(revision),
         "instruction_set": _ser_set(pinned_set),
+        # Always include the currently-active set so the UI can show a
+        # "newer version available" indicator when the device is pinned to
+        # an older set. Same object as instruction_set when up-to-date.
+        "active_instruction_set": _ser_set(active_set) if active_set else None,
         "steps": [
             {
                 "step": _ser_step(item["step"], with_signed_reference=True),

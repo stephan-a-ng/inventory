@@ -313,7 +313,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS firmware_versions_one_standard
 CREATE TABLE IF NOT EXISTS build_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_revision_id UUID REFERENCES product_revisions(id) ON DELETE CASCADE,
-  stage_key TEXT CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration')),
+  stage_key TEXT CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration', 'QA', 'Staging')),
   sort_order INTEGER NOT NULL DEFAULT 0,
   title TEXT NOT NULL,
   description TEXT,
@@ -376,7 +376,7 @@ CREATE INDEX IF NOT EXISTS idx_device_notes_device_created
 CREATE TABLE IF NOT EXISTS instruction_sets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_revision_id UUID NOT NULL REFERENCES product_revisions(id) ON DELETE CASCADE,
-  stage_key TEXT NOT NULL CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration')),
+  stage_key TEXT NOT NULL CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration', 'QA', 'Staging')),
   label TEXT NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -386,6 +386,23 @@ CREATE TABLE IF NOT EXISTS instruction_sets (
 -- At most one active instruction set per (revision, stage).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_instruction_sets_one_active
   ON instruction_sets(product_revision_id, stage_key) WHERE is_active = TRUE;
+
+-- Widen the stage_key CHECK constraint when an older one (Assembly/Firmware/
+-- Calibration only) is still in place.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'instruction_sets_stage_key_check'
+      AND conrelid = 'inventory.instruction_sets'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%Calibration%'
+      AND pg_get_constraintdef(oid) NOT LIKE '%QA%'
+  ) THEN
+    ALTER TABLE instruction_sets DROP CONSTRAINT instruction_sets_stage_key_check;
+    ALTER TABLE instruction_sets ADD CONSTRAINT instruction_sets_stage_key_check
+      CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration', 'QA', 'Staging'));
+  END IF;
+END $$;
 
 -- Wire build_steps to an instruction_set. Existing rows keyed by
 -- (product_revision_id, stage_key) get a default "v1" set created for them

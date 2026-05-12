@@ -18,7 +18,7 @@ import {
   reorderBuildSteps,
 } from '../lib/api';
 
-const STAGE_KEYS = ['Assembly', 'Firmware', 'Calibration'];
+const STAGE_KEYS = ['Assembly', 'Firmware', 'Calibration', 'QA', 'Staging'];
 
 const stageTabStyle = (active) => ({
   flex: 1,

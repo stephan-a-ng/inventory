@@ -265,12 +265,16 @@ export default function DeviceDetail() {
     user?.role &&
     user.role !== 'viewer';
 
-  // Build-step walkthrough applies to Assembly / Firmware / Calibration —
-  // those are the three stages with authored work instructions.
+  // Build-step walkthrough applies to Assembly / Firmware / Calibration /
+  // QA / Staging — every stage that has authored work instructions.
   const stageKey = activeStage
-    ? ({ assembly: 'Assembly', firmware: 'Firmware', calibration: 'Calibration' }[
-        activeStage.name.toLowerCase()
-      ] || null)
+    ? ({
+        assembly: 'Assembly',
+        firmware: 'Firmware',
+        calibration: 'Calibration',
+        qa: 'QA',
+        staging: 'Staging',
+      }[activeStage.name.toLowerCase()] || null)
     : null;
 
   return (

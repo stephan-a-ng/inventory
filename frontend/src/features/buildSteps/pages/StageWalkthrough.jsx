@@ -4,12 +4,15 @@ import { ArrowLeft, Check, ArrowRight } from 'lucide-react';
 import AppSidebar from '@/shared/components/layout/AppSidebar';
 import { authFetch } from '@/shared/lib/api';
 import { getWorkerView } from '../lib/api';
+import VersionIndicator from '../components/VersionIndicator';
 import './StageWalkthrough.css';
 
 const STAGE_BLURBS = {
   Assembly: 'Build the unit. Follow each step in order and take any required proof photos.',
   Firmware: 'Flash and configure the unit. Capture proof photos on critical operations.',
   Calibration: 'Calibrate sensors and verify readings.',
+  QA: 'Run the final QA checklist before the unit leaves the bench.',
+  Staging: 'Prep the unit for shipment — packaging, accessories, paperwork.',
 };
 
 export default function StageWalkthrough() {
@@ -87,6 +90,14 @@ export default function StageWalkthrough() {
               <div className="lbl"><span className="yb" />Stage · {stageKey}</div>
               <h1>{stageHeadline(stageKey)}</h1>
               <p>{STAGE_BLURBS[stageKey]}</p>
+              {view?.instruction_set && (
+                <div style={{ marginTop: 14 }}>
+                  <VersionIndicator
+                    pinned={view.instruction_set}
+                    active={view.active_instruction_set}
+                  />
+                </div>
+              )}
             </div>
             <div className="r">
               <div className="step">Step</div>
@@ -172,6 +183,8 @@ function stageHeadline(stageKey) {
   if (stageKey === 'Assembly') return 'Build the unit.';
   if (stageKey === 'Firmware') return 'Flash the firmware.';
   if (stageKey === 'Calibration') return 'Calibrate the unit.';
+  if (stageKey === 'QA') return 'Quality-assure the unit.';
+  if (stageKey === 'Staging') return 'Stage for shipment.';
   return stageKey;
 }
 
