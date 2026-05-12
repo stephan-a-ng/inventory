@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, AlertTriangle, HelpCircle, ExternalLink, Pencil, Check, X } from 'lucide-react';
+import { ExternalLink, Pencil, Check, X, HelpCircle } from 'lucide-react';
 import useAuth from '@/features/auth/useAuth';
+
+const HELP_TEXT =
+  'Compares this device\'s firmware_version against the latest release tag ' +
+  'on the product\'s firmware repo (BEMS → moon-five-technologies/OllieDriver, ' +
+  'EVSE → moon-five-technologies/argo). Cached for an hour.';
 
 /**
  * Compares this device's firmware_version against the latest GitHub release
@@ -120,10 +125,16 @@ export default function FirmwareVersionCheckCard({ deviceId, currentUser }) {
     <div className="sec firmware-check" data-testid="firmware-check-card">
       <div className="sh">
         <h3>
-          {badgeTone === 'good' && <CheckCircle2 size={16} aria-hidden />}
-          {badgeTone === 'bad' && <AlertTriangle size={16} aria-hidden />}
-          {badgeTone === 'neutral' && <HelpCircle size={16} aria-hidden />}
           Firmware version
+          <span
+            className="firmware-check-help"
+            tabIndex={0}
+            aria-label={HELP_TEXT}
+            title={HELP_TEXT}
+            data-testid="firmware-check-help"
+          >
+            <HelpCircle size={14} aria-hidden />
+          </span>
         </h3>
         <span className={`sub firmware-check-badge firmware-check-badge--${badgeTone}`}>
           {badge}
