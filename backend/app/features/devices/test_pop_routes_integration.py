@@ -4,7 +4,7 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
-async def _create_device(client, mac: str, product_type: str = "CHARGER") -> dict:
+async def _create_device(client, mac: str, product_type: str = "EVSE") -> dict:
     r = await client.post(
         "/api/devices",
         json={"mac_address": mac, "product_type": product_type},
@@ -17,14 +17,14 @@ async def test_create_charger_returns_pop_field(client, auth_user):
     _, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
 
-    body = await _create_device(client, "AA:BB:CC:00:00:01", "CHARGER")
+    body = await _create_device(client, "AA:BB:CC:00:00:01", "EVSE")
     assert "pop" in body
     assert body["pop"].startswith("mfp_")
     assert len(body["pop"]) == 30
     assert "pop_generated_at" in body
 
 
-async def test_create_non_charger_omits_pop_field(client, auth_user):
+async def test_create_non_evse_omits_pop_field(client, auth_user):
     _, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
 
@@ -37,7 +37,7 @@ async def test_pop_stored_encrypted_in_db(client, auth_user, integration_pool):
     _, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
 
-    body = await _create_device(client, "AA:BB:CC:00:00:03", "CHARGER")
+    body = await _create_device(client, "AA:BB:CC:00:00:03", "EVSE")
     async with integration_pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT pop FROM inventory.devices WHERE mac_address = $1",
@@ -150,7 +150,7 @@ async def test_get_pop_409_when_pop_missing(client, auth_user, integration_pool)
     assert r.status_code == 409
 
 
-async def test_rotate_pop_first_time_for_legacy_charger(client, auth_user, integration_pool):
+async def test_rotate_pop_first_time_for_legacy_evse(client, auth_user, integration_pool):
     _, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
 
@@ -193,7 +193,7 @@ async def test_rotate_pop_non_admin_forbidden(client, auth_user):
     assert r.status_code == 403
 
 
-async def test_rotate_pop_rejects_non_charger(client, auth_user):
+async def test_rotate_pop_rejects_non_evse(client, auth_user):
     _, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
 

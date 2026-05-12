@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/devices", tags=["devices"])
 def _serialize_device(d: dict, *, include_pop: bool = False) -> dict:
     """Convert asyncpg Record fields to serializable types.
 
-    `include_pop` is opt-in and only used on the create response for CHARGER
+    `include_pop` is opt-in and only used on the create response for EVSE
     devices. Listing, GET-by-id, and CSV export never include the PoP.
     """
     out = {
@@ -90,7 +90,7 @@ async def create_device(
             action="created",
             new_value={"mac_address": created["mac_address"], "product_type": created["product_type"]},
         )
-        # Auto-PoP audit + no-cache response for CHARGER devices.
+        # Auto-PoP audit + no-cache response for EVSE devices.
         if created.get("pop"):
             await AuditService.log_action(
                 device_id=created["id"],
@@ -205,7 +205,7 @@ async def rotate_device_pop(
     response: Response,
     user: dict = Depends(require_role("admin")),
 ):
-    """Generate (or rotate) the PoP for a CHARGER device.
+    """Generate (or rotate) the PoP for an EVSE device.
 
     Used by the factory tool on first flash, or by an admin to invalidate
     a compromised key. Audit-logged as pop_generated (first time) or
