@@ -5,14 +5,17 @@ import secrets
 import httpx
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
+from pydantic import BaseModel
 
 from app.shared.config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
     JWT_EXPIRATION_HOURS,
     FRONTEND_URL, IS_DEPLOYED, is_authorized_email,
+    mobile_google_client_ids,
 )
 from app.shared.db import DatabasePool
 
+from .google_id_token import verify_google_id_token
 from .jwt import create_jwt_token, verify_jwt_token
 
 logger = logging.getLogger(__name__)
@@ -141,3 +144,42 @@ async def logout():
         samesite="none" if IS_DEPLOYED else "lax",
     )
     return response
+
+
+class MobileGoogleAuthRequest(BaseModel):
+    id_token: str
+
+
+@router.post("/mobile/google")
+async def mobile_google_auth(body: MobileGoogleAuthRequest):
+    """Exchange a Google ID token (from the Flutter installer app) for a MoonFive bearer JWT.
+
+    Differs from the web flow: no cookie, no domain auto-allowlist. The user must
+    already exist in `users` with a non-viewer role; new accounts are promoted
+    out-of-band by an admin in the web Settings page.
+    """
+    if not body.id_token:
+        raise HTTPException(status_code=400, detail="id_token required")
+
+    claims = verify_google_id_token(body.id_token, mobile_google_client_ids())
+    email = claims["email"].lower()
+
+    user = await DatabasePool.fetchrow(
+        "SELECT id, email, name, picture, role FROM users WHERE lower(email) = $1",
+        email,
+    )
+    if not user or user["role"] == "viewer":
+        raise HTTPException(status_code=403, detail="Account not authorized")
+
+    access_token = create_jwt_token(str(user["id"]), user["email"], role=user["role"])
+    return {
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "expires_in": JWT_EXPIRATION_HOURS * 3600,
+        "user": {
+            "id": str(user["id"]),
+            "email": user["email"],
+            "name": user["name"],
+            "role": user["role"],
+        },
+    }

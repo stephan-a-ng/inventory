@@ -7,11 +7,22 @@ from app.shared.db import DatabasePool
 from .jwt import verify_jwt_token
 
 
-async def get_current_user(request: Request) -> dict:
-    """Get authenticated user from JWT cookie. Raises 401 if not authenticated."""
+def _extract_token(request: Request) -> str:
+    """Authorization: Bearer <jwt> first (mobile), then auth_token cookie (web)."""
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+        if token:
+            return token
     token = request.cookies.get("auth_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    return token
+
+
+async def get_current_user(request: Request) -> dict:
+    """Get authenticated user from bearer header or JWT cookie. Raises 401 if not authenticated."""
+    token = _extract_token(request)
     payload = verify_jwt_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")

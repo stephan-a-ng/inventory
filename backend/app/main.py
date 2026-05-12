@@ -14,6 +14,7 @@ from app.features.auth import router as auth_router
 from app.features.devices import qr_router, router as devices_router
 from app.features.stages import router as stages_router
 from app.features.subsystems import board_revision_router, router as subsystems_router
+from app.features.users import router as users_router
 from app.shared.config import FRONTEND_URL
 from app.shared.db import DatabasePool
 
@@ -45,6 +46,7 @@ app.include_router(audit_router)
 app.include_router(stages_router)
 app.include_router(subsystems_router)
 app.include_router(board_revision_router)
+app.include_router(users_router)
 
 
 @app.get("/api/health")

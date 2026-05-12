@@ -3,6 +3,13 @@ import AppSidebar from '@/shared/components/layout/AppSidebar';
 import { useAuth } from '@/features/auth';
 import { StagesPanel } from '@/features/stages';
 import { SubsystemsPanel } from '@/features/subsystems';
+import { UserManagementPanel } from '@/features/users';
+
+const SECTIONS = [
+  { id: 'stages', label: 'Commissioning Stages' },
+  { id: 'subsystems', label: 'Board Subsystems' },
+  { id: 'users', label: 'Team & Roles' },
+];
 
 export default function Settings() {
   const { user } = useAuth();
@@ -65,33 +72,34 @@ export default function Settings() {
             borderBottom: '1px solid var(--m5-rule)',
             marginBottom: 24,
           }}>
-            {['stages', 'subsystems'].map((section) => (
+            {SECTIONS.map((section) => (
               <button
-                key={section}
-                onClick={() => setActiveSection(section)}
+                key={section.id}
+                onClick={() => setActiveSection(section.id)}
                 style={{
                   padding: '10px 20px',
                   background: 'transparent',
                   border: 'none',
-                  borderBottom: activeSection === section ? '2px solid var(--m5-ink)' : '2px solid transparent',
-                  color: activeSection === section ? 'var(--m5-ink)' : 'var(--m5-muted)',
+                  borderBottom: activeSection === section.id ? '2px solid var(--m5-ink)' : '2px solid transparent',
+                  color: activeSection === section.id ? 'var(--m5-ink)' : 'var(--m5-muted)',
                   fontFamily: 'var(--m5-font-mono)',
                   fontSize: '11px',
                   letterSpacing: '0.14em',
                   textTransform: 'uppercase',
                   cursor: 'pointer',
-                  fontWeight: activeSection === section ? 600 : 400,
+                  fontWeight: activeSection === section.id ? 600 : 400,
                   transition: 'color 0.12s, border-color 0.12s',
                   marginBottom: -1,
                 }}
               >
-                {section === 'stages' ? 'Commissioning Stages' : 'Board Subsystems'}
+                {section.label}
               </button>
             ))}
           </div>
 
           {activeSection === 'stages' && <StagesPanel />}
           {activeSection === 'subsystems' && <SubsystemsPanel />}
+          {activeSection === 'users' && <UserManagementPanel />}
         </div>
       </main>
     </div>

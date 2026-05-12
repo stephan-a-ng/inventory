@@ -50,6 +50,7 @@ ENV=$1
 
 deploy_backend() {
   local service=$1 frontend_url=$2 redirect_uri=$3 db_secret=$4 jwt_secret=$5 client_id_secret=$6 client_secret_secret=$7
+  local pop_secret=$8 mobile_ios_secret=$9 mobile_android_secret=${10}
 
   echo "→ Deploying backend: $service"
   gcloud run deploy "$service" \
@@ -59,15 +60,16 @@ deploy_backend() {
     --platform managed \
     --allow-unauthenticated \
     --add-cloudsql-instances "$CLOUDSQL_INSTANCE" \
-    --set-secrets "DATABASE_URL=${db_secret}:latest,JWT_SECRET=${jwt_secret}:latest,GOOGLE_CLIENT_ID=${client_id_secret}:latest,GOOGLE_CLIENT_SECRET=${client_secret_secret}:latest" \
+    --set-secrets "DATABASE_URL=${db_secret}:latest,JWT_SECRET=${jwt_secret}:latest,GOOGLE_CLIENT_ID=${client_id_secret}:latest,GOOGLE_CLIENT_SECRET=${client_secret_secret}:latest,POP_ENCRYPTION_KEY=${pop_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_IOS=${mobile_ios_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_ANDROID=${mobile_android_secret}:latest" \
     --set-env-vars "ENVIRONMENT=${ENV},FRONTEND_URL=${frontend_url},GOOGLE_REDIRECT_URI=${redirect_uri},AUTHORIZED_DOMAIN=moonfive.tech"
 }
 
 deploy_frontend() {
-  local service=$1 image=$2 api_url=$3
+  local service=$1 image=$2 api_url=$3 installer_app_url=$4
 
   echo "→ Building frontend image: $image"
   docker buildx build --platform linux/amd64 \
+    --build-arg "VITE_INSTALLER_APP_URL=${installer_app_url}" \
     -t "gcr.io/${PROJECT}/${image}:latest" \
     --push \
     ./frontend
@@ -98,6 +100,8 @@ health_check() {
 
 # ---------------------------------------------------------------------------
 
+INSTALLER_APP_URL_SCHEME="moonfive-installer://device"
+
 if [[ "$ENV" == "staging" ]]; then
   echo "=== Deploying to STAGING ==="
   deploy_backend \
@@ -107,9 +111,12 @@ if [[ "$ENV" == "staging" ]]; then
     inventory-database-url-staging \
     inventory-jwt-secret-staging \
     inventory-google-client-id-staging \
-    inventory-google-client-secret-staging
+    inventory-google-client-secret-staging \
+    inventory-pop-encryption-key-staging \
+    inventory-mobile-google-client-id-ios-staging \
+    inventory-mobile-google-client-id-android-staging
 
-  deploy_frontend "$STAGING_WEB" "inventory-frontend-staging" "$STAGING_API_URL"
+  deploy_frontend "$STAGING_WEB" "inventory-frontend-staging" "$STAGING_API_URL" "$INSTALLER_APP_URL_SCHEME"
   health_check "$STAGING_API_URL" "$STAGING_WEB_URL"
   echo ""
   echo "Staging: $STAGING_WEB_URL"
@@ -127,9 +134,12 @@ elif [[ "$ENV" == "production" ]]; then
     inventory-database-url-production \
     inventory-jwt-secret-production \
     inventory-google-client-id-production \
-    inventory-google-client-secret-production
+    inventory-google-client-secret-production \
+    inventory-pop-encryption-key-production \
+    inventory-mobile-google-client-id-ios-production \
+    inventory-mobile-google-client-id-android-production
 
-  deploy_frontend "$PROD_WEB" "inventory-frontend-production" "$PROD_API_URL"
+  deploy_frontend "$PROD_WEB" "inventory-frontend-production" "$PROD_API_URL" "$INSTALLER_APP_URL_SCHEME"
   health_check "$PROD_API_URL" "$PROD_WEB_URL"
   echo ""
   echo "Production: $PROD_WEB_URL"

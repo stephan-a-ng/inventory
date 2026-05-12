@@ -1,7 +1,20 @@
 """Device business logic"""
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
+
 from app.shared.db import DatabasePool
+from app.shared.encryption import decrypt_pop, encrypt_pop
+
+from .pop_service import generate_pop
+
+
+class DeviceNotFoundError(Exception):
+    """Raised when a MAC lookup finds no device."""
+
+
+class DevicePopMissingError(Exception):
+    """Raised when a device exists but has no PoP (legacy or non-charger row)."""
 
 
 class DeviceService:
@@ -81,6 +94,17 @@ class DeviceService:
             if first_stage:
                 data["current_stage_id"] = first_stage["id"]
 
+        # PoP generated only for chargers; included in the create response so the
+        # factory tool can flash it. The plaintext value is returned alongside the
+        # row but never persisted in plaintext form.
+        pop_plaintext: str | None = None
+        pop_ciphertext: str | None = None
+        pop_generated_at: datetime | None = None
+        if product_type == "CHARGER":
+            pop_plaintext = generate_pop()
+            pop_ciphertext = encrypt_pop(pop_plaintext)
+            pop_generated_at = datetime.now(timezone.utc)
+
         # Auto-generate device name atomically to avoid race conditions
         row = await DatabasePool.fetchrow(
             """WITH next_seq AS (
@@ -89,17 +113,81 @@ class DeviceService:
                )
                INSERT INTO devices (mac_address, product_type, serial_number, firmware_version,
                    hardware_revision, current_stage_id, location, site_name, notes,
-                   device_name, sequence_number)
+                   device_name, sequence_number, pop, pop_generated_at)
                SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9,
-                   $2 || '-' || LPAD(next_seq.seq::text, 4, '0'), next_seq.seq
+                   $2 || '-' || LPAD(next_seq.seq::text, 4, '0'), next_seq.seq, $10, $11
                FROM next_seq
                RETURNING *""",
             data["mac_address"], product_type, data.get("serial_number"),
             data.get("firmware_version"), data.get("hardware_revision"),
             data.get("current_stage_id"), data.get("location"),
             data.get("site_name"), data.get("notes"),
+            pop_ciphertext, pop_generated_at,
         )
-        return dict(row)
+        result = dict(row)
+        if pop_plaintext is not None:
+            # Plaintext only; the route layer decides whether to include it.
+            result["pop"] = pop_plaintext
+        return result
+
+    @staticmethod
+    async def get_pop(mac_address: str) -> dict:
+        """Return plaintext PoP + metadata. Raises DeviceNotFoundError / DevicePopMissingError."""
+        row = await DatabasePool.fetchrow(
+            """SELECT id, mac_address, device_name, pop, pop_generated_at
+               FROM devices WHERE LOWER(mac_address) = LOWER($1)""",
+            mac_address,
+        )
+        if not row:
+            raise DeviceNotFoundError(mac_address)
+        if not row["pop"]:
+            raise DevicePopMissingError(mac_address)
+        return {
+            "id": row["id"],
+            "mac_address": row["mac_address"],
+            "device_name": row["device_name"],
+            "pop": decrypt_pop(row["pop"]),
+            "pop_generated_at": row["pop_generated_at"],
+        }
+
+    @staticmethod
+    async def rotate_pop(mac_address: str) -> dict:
+        """Generate a new PoP for the device, save encrypted. Raises DeviceNotFoundError.
+
+        Returns the plaintext PoP + metadata + rotated_from_existing flag.
+        Allowed only for CHARGER devices (enforced by the pop_only_for_chargers CHECK).
+        """
+        existing = await DatabasePool.fetchrow(
+            """SELECT id, mac_address, device_name, product_type, pop
+               FROM devices WHERE LOWER(mac_address) = LOWER($1)""",
+            mac_address,
+        )
+        if not existing:
+            raise DeviceNotFoundError(mac_address)
+        if existing["product_type"] != "CHARGER":
+            raise DevicePopMissingError(
+                f"PoP is only supported for CHARGER devices, not {existing['product_type']}"
+            )
+
+        rotated_from_existing = existing["pop"] is not None
+        plaintext = generate_pop()
+        ciphertext = encrypt_pop(plaintext)
+        now = datetime.now(timezone.utc)
+
+        await DatabasePool.execute(
+            """UPDATE devices
+               SET pop = $1, pop_generated_at = $2, updated_at = now()
+               WHERE id = $3""",
+            ciphertext, now, existing["id"],
+        )
+        return {
+            "id": existing["id"],
+            "mac_address": existing["mac_address"],
+            "device_name": existing["device_name"],
+            "pop": plaintext,
+            "pop_generated_at": now,
+            "rotated_from_existing": rotated_from_existing,
+        }
 
     @staticmethod
     async def update_device(device_id: UUID, data: dict) -> Optional[dict]:

@@ -28,3 +28,21 @@ def is_authorized_email(email: str) -> bool:
 
 # Frontend URL
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# PoP (proof-of-possession) for installer-app WiFi commissioning.
+# Fernet key (32 url-safe base64 bytes). Generate via:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# The dev default is a fixed valid-Fernet key; staging/production fetch from
+# Secret Manager via env (inventory-pop-encryption-key-<env>).
+_POP_DEV_KEY = "ouu1aARMcEOxbR04uMSR_VlhXAhAqPSfzHR8iIeUknA="
+POP_ENCRYPTION_KEY = os.getenv("POP_ENCRYPTION_KEY", _POP_DEV_KEY)
+if IS_DEPLOYED and POP_ENCRYPTION_KEY == _POP_DEV_KEY:
+    raise RuntimeError("POP_ENCRYPTION_KEY must be set in deployed environments")
+
+# Mobile-app Google Sign-In OAuth client IDs (separate from the web client; per-platform).
+# Stored in Secret Manager as inventory-mobile-google-client-id-{ios,android}-<env>.
+MOBILE_GOOGLE_CLIENT_ID_IOS = os.getenv("MOBILE_GOOGLE_CLIENT_ID_IOS", "")
+MOBILE_GOOGLE_CLIENT_ID_ANDROID = os.getenv("MOBILE_GOOGLE_CLIENT_ID_ANDROID", "")
+
+def mobile_google_client_ids() -> list[str]:
+    return [cid for cid in (MOBILE_GOOGLE_CLIENT_ID_IOS, MOBILE_GOOGLE_CLIENT_ID_ANDROID) if cid]

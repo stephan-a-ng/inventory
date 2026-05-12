@@ -548,6 +548,87 @@
   background: var(--m5-cream-deep);
 }
 
+/* ── Firmware PoP card ── */
+.device-details-page .sec.firmware-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.device-details-page .pop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.device-details-page .pop-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--m5-cream);
+  border: 1px solid var(--m5-cream-deep);
+  border-radius: 6px;
+}
+.device-details-page .pop-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--m5-cream-deep);
+  border-radius: 4px;
+  background: white;
+  color: var(--m5-ink);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.device-details-page .pop-icon-btn:hover:not(:disabled) {
+  background: var(--m5-cream-deep);
+  border-color: var(--m5-ink);
+}
+.device-details-page .pop-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.device-details-page .pop-value {
+  flex: 1;
+  font-family: var(--m5-font-mono);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--m5-ink);
+  word-break: break-all;
+}
+.device-details-page .pop-meta {
+  font-family: var(--m5-font-mono);
+  font-size: 11px;
+  color: var(--m5-muted);
+  letter-spacing: 0.05em;
+}
+.device-details-page .pop-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  color: rgb(180, 30, 30);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.device-details-page .pop-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--m5-cream);
+  border: 1px dashed var(--m5-cream-deep);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--m5-ink);
+}
+
 /* ── loading / not-found ── */
 .device-details-page .loading,
 .device-details-page .not-found {

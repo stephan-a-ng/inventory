@@ -26,6 +26,10 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: http://localhost:8000/api/auth/google/callback
+      # Dev defaults for the new PoP feature — staging/prod read these from Secret Manager.
+      POP_ENCRYPTION_KEY: ${POP_ENCRYPTION_KEY:-ouu1aARMcEOxbR04uMSR_VlhXAhAqPSfzHR8iIeUknA=}
+      MOBILE_GOOGLE_CLIENT_ID_IOS: ${MOBILE_GOOGLE_CLIENT_ID_IOS:-}
+      MOBILE_GOOGLE_CLIENT_ID_ANDROID: ${MOBILE_GOOGLE_CLIENT_ID_ANDROID:-}
     volumes:
       - ./backend:/app
     ports:
@@ -38,6 +42,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        VITE_INSTALLER_APP_URL: ${VITE_INSTALLER_APP_URL:-moonfive-installer://device}
     environment:
       BACKEND_URL: http://backend:8000
     volumes:

@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Clock, Download, Edit } from 'lucide-react';
 import AppSidebar from '@/shared/components/layout/AppSidebar';
 import DeviceForm from '@/features/devices/components/DeviceForm';
+import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
 import useAuth from '@/features/auth/useAuth';
 import { formatRelativeTime } from '@/features/audit/utils/relativeTime';
 import './DeviceDetail.css';
 
 const ASSEMBLY_NAMES = new Set(['assembly', 'build', 'mechanical']);
+const FIRMWARE_NAMES = new Set(['firmware']);
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -293,6 +295,13 @@ export default function DeviceDetail() {
 
   const isAssemblyPanel =
     activeStage && ASSEMBLY_NAMES.has(activeStage.name.toLowerCase());
+  const isFirmwarePanel =
+    activeStage && FIRMWARE_NAMES.has(activeStage.name.toLowerCase());
+  const showFirmwarePopCard =
+    isFirmwarePanel &&
+    device.product_type === 'CHARGER' &&
+    user?.role &&
+    user.role !== 'viewer';
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--m5-cream)' }}>
@@ -511,6 +520,9 @@ export default function DeviceDetail() {
                   </div>
                 </div>
               )}
+
+              {/* Firmware: per-device WiFi-commissioning PoP for CHARGER devices */}
+              {showFirmwarePopCard && <FirmwarePopCard device={device} />}
 
               {/* Stage events list — derived from audit log scoped to this window */}
               <div className="sec">
