@@ -73,9 +73,19 @@ export const deleteBuildStep = (id) =>
 export const reorderBuildSteps = (ids) =>
   call('/api/build-steps/reorder', jsonInit('POST', { ids }));
 
-// ── worker view (Phase C surfaces these) ───────────────────────────────────
+// ── worker view + actions ──────────────────────────────────────────────────
 export const getWorkerView = (deviceId, stageKey) =>
   call(`/api/devices/${deviceId}/stages/${stageKey}/build-steps`);
 
 export const toggleStep = (deviceId, stepId, checked) =>
   call(`/api/devices/${deviceId}/build-steps/${stepId}/toggle`, jsonInit('POST', { checked }));
+
+// Photo upload uses FormData; callers pass a Blob.
+export async function uploadDevicePhoto(deviceId, stepId, blob, filename = 'photo.jpg') {
+  const fd = new FormData();
+  fd.append('file', blob, filename);
+  return call(`/api/devices/${deviceId}/build-steps/${stepId}/photos`, { method: 'POST', body: fd });
+}
+
+export const deleteDevicePhoto = (deviceId, photoId) =>
+  call(`/api/devices/${deviceId}/build-step-photos/${photoId}`, { method: 'DELETE' });

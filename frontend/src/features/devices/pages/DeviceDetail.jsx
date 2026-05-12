@@ -315,6 +315,14 @@ export default function DeviceDetail() {
     user?.role &&
     user.role !== 'viewer';
 
+  // Build-step walkthrough applies to Assembly / Firmware / Calibration —
+  // those are the three stages with authored work instructions.
+  const stageKey = activeStage
+    ? ({ assembly: 'Assembly', firmware: 'Firmware', calibration: 'Calibration' }[
+        activeStage.name.toLowerCase()
+      ] || null)
+    : null;
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--m5-cream)' }}>
       <AppSidebar />
@@ -465,6 +473,53 @@ export default function DeviceDetail() {
               {activeStatus === 'current' && device.notes && (
                 <div className="note">
                   <strong>Notes</strong> — {device.notes}
+                </div>
+              )}
+
+              {/* build-step walkthrough — links into the per-step worker view */}
+              {stageKey && (
+                <div style={{
+                  marginTop: 18,
+                  border: '1px solid var(--m5-rule)',
+                  background: 'var(--m5-cream-deep)',
+                  padding: '14px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  justifyContent: 'space-between',
+                }}>
+                  <div>
+                    <div style={{
+                      fontFamily: 'var(--m5-font-mono)',
+                      fontSize: 10.5,
+                      letterSpacing: '0.14em',
+                      textTransform: 'uppercase',
+                      color: 'var(--m5-muted)',
+                      marginBottom: 4,
+                    }}>Walkthrough</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--m5-ink)' }}>
+                      Step-by-step {stageKey.toLowerCase()} instructions
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/devices/${id}/stages/${stageKey}`)}
+                    style={{
+                      padding: '10px 16px',
+                      background: 'var(--m5-yellow)',
+                      color: 'var(--m5-ink)',
+                      border: '1px solid var(--m5-ink)',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      borderRadius: 0,
+                    }}
+                  >
+                    Open walkthrough <span aria-hidden>→</span>
+                  </button>
                 </div>
               )}
 

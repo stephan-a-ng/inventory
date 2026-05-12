@@ -27,6 +27,12 @@ const BulkImport = lazy(() =>
   import('@/features/import').then((m) => ({ default: m.BulkImport })),
 );
 const Settings = lazy(() => import('./routes/Settings'));
+const StageWalkthrough = lazy(() =>
+  import('@/features/buildSteps').then((m) => ({ default: m.StageWalkthrough })),
+);
+const BuildStepRunner = lazy(() =>
+  import('@/features/buildSteps').then((m) => ({ default: m.BuildStepRunner })),
+);
 
 function Loading() {
   return (
@@ -51,6 +57,8 @@ function App() {
               <Route path="/scanner" element={<Scanner />} />
               <Route path="/import" element={<BulkImport />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/devices/:deviceId/stages/:stageKey" element={<StageWalkthrough />} />
+              <Route path="/devices/:deviceId/stages/:stageKey/steps/:stepId" element={<BuildStepRunner />} />
             </Routes>
           </Suspense>
         </AuthGate>
