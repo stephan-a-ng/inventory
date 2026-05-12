@@ -351,3 +351,18 @@ CREATE TABLE IF NOT EXISTS build_step_photos (
 );
 CREATE INDEX IF NOT EXISTS idx_bsp_device_step
   ON build_step_photos(device_id, build_step_id);
+
+-- ── Per-device user-attributed notes ─────────────────────────────────────────
+-- Replaces the legacy single `devices.notes` text column for the tech-notes
+-- UI on the device details page. Each row is authored by a user; other techs
+-- viewing the device see the full feed.
+CREATE TABLE IF NOT EXISTS device_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  body TEXT NOT NULL CHECK (length(body) > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_device_notes_device_created
+  ON device_notes(device_id, created_at DESC);

@@ -107,7 +107,8 @@ async def clean_db(pg_pool: asyncpg.Pool):
             "TRUNCATE inventory.audit_log, inventory.board_revisions, "
             "inventory.build_step_photos, inventory.device_build_step_status, "
             "inventory.build_steps, inventory.firmware_versions, "
-            "inventory.product_revisions, inventory.devices, inventory.users "
+            "inventory.product_revisions, inventory.device_notes, "
+            "inventory.devices, inventory.users "
             "RESTART IDENTITY CASCADE"
         )
     yield pg_pool
