@@ -171,7 +171,7 @@ describe('<DeviceDetail />', () => {
     expect(screen.getByText(/In progress/i)).toBeInTheDocument();
   });
 
-  it('renders a Pending empty-state box for a future stage with no events', async () => {
+  it('renders the Pending status chip on a future stage', async () => {
     mockApi({ device: baseDevice });
     renderPage();
 
@@ -180,8 +180,6 @@ describe('<DeviceDetail />', () => {
     await user.click(screen.getByRole('button', { name: /Deployed/ }));
 
     await screen.findByRole('heading', { level: 2, name: 'Deployed' });
-    expect(screen.getByText(/Queued/i)).toBeInTheDocument();
-    // status chip on a future stage reads Pending
     expect(screen.getByText(/^Pending$/i)).toBeInTheDocument();
   });
 

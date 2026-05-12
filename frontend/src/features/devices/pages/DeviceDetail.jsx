@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Clock, Download, Edit } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Download, Edit } from 'lucide-react';
 import AppSidebar from '@/shared/components/layout/AppSidebar';
 import DeviceForm from '@/features/devices/components/DeviceForm';
 import DeviceNotes from '@/features/devices/components/DeviceNotes';
@@ -38,11 +38,6 @@ function durationLabel(fromIso, toIso) {
   const days = Math.floor(hours / 24);
   const remHours = hours % 24;
   return `${days}d ${remHours}h elapsed`;
-}
-
-function actionLabel(action) {
-  if (!action) return 'Event';
-  return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**
@@ -443,51 +438,6 @@ export default function DeviceDetail() {
               {/* Firmware: per-device WiFi-commissioning PoP for EVSE devices */}
               {showFirmwarePopCard && <FirmwarePopCard device={device} />}
 
-              {/* Stage events list — derived from audit log scoped to this window */}
-              <div className="sec">
-                <div className="sh">
-                  <h3>
-                    <span className="yb" />
-                    Stage events
-                  </h3>
-                  {activeWindow?.events?.length > 0 && (
-                    <span className="sub">
-                      {activeWindow.events.length} event
-                      {activeWindow.events.length === 1 ? '' : 's'}
-                    </span>
-                  )}
-                </div>
-                {activeWindow?.events?.length ? (
-                  <ul className="step-list">
-                    {activeWindow.events.map((event) => (
-                      <li key={event.id} className="done">
-                        <span className="box">
-                          <Check size={10} strokeWidth={3} />
-                        </span>
-                        <div className="lbl">{actionLabel(event.action)}</div>
-                        <div className="when">{formatRelativeTime(event.created_at)}</div>
-                        <div className="meta">{event.user_name || '—'}</div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="pending-box">
-                    <Clock className="ic" strokeWidth={1.5} />
-                    <h4>
-                      {activeStatus === 'done'
-                        ? 'No events recorded'
-                        : activeStatus === 'current'
-                          ? 'No events yet — waiting for activity'
-                          : 'Queued'}
-                    </h4>
-                    <p>
-                      {activeStatus === 'todo'
-                        ? `Starts after stage ${pad2(activeIdx)}`
-                        : 'Updates land here as work progresses'}
-                    </p>
-                  </div>
-                )}
-              </div>
             </section>
           )}
         </div>

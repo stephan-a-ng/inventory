@@ -226,10 +226,20 @@ export default function DeviceNotes({ deviceId, currentUser }) {
 }
 
 function Avatar({ name, picture }) {
+  const [imgFailed, setImgFailed] = useState(false);
   const initials = (name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-  return picture ? (
-    <img className="note-avatar" src={picture} alt="" />
-  ) : (
-    <span className="note-avatar fallback" aria-hidden="true">{initials}</span>
-  );
+  // Fall back to initials when picture is missing OR when the URL fails to
+  // load (Google CDN occasionally 403s under tracking-protection rules).
+  if (picture && !imgFailed) {
+    return (
+      <img
+        className="note-avatar"
+        src={picture}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+  return <span className="note-avatar fallback" aria-hidden="true">{initials}</span>;
 }
