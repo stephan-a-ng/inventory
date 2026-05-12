@@ -12,11 +12,14 @@ inventory/
 │   │   │   ├── devices/           # device CRUD, QR codes, CSV import/export
 │   │   │   ├── stages/            # commissioning pipeline stages
 │   │   │   ├── subsystems/        # subsystems + board revisions
+│   │   │   ├── build_steps/       # product_revisions + firmware_versions
+│   │   │   │                      #   + authored build steps + worker progress
 │   │   │   └── audit/             # audit log
 │   │   └── shared/
 │   │       ├── db.py              # DatabasePool singleton (search_path=inventory)
 │   │       ├── config.py          # env-driven config
 │   │       ├── schema.sql         # DDL (CREATE TABLE IF NOT EXISTS …)
+│   │       ├── photo_storage.py   # GCS chokepoint (upload, signed URL, delete)
 │   │       └── models.py          # shared enums (ProductType)
 │   ├── tests/
 │   │   ├── conftest.py            # pg_pool, clean_db, auth_user, client fixtures
@@ -38,7 +41,9 @@ inventory/
 │   │   │   ├── import/            # bulk CSV import page + components
 │   │   │   ├── audit/             # activity feed + audit timeline
 │   │   │   ├── stages/            # admin stages panel
-│   │   │   └── subsystems/        # admin subsystems panel
+│   │   │   ├── subsystems/        # admin subsystems panel
+│   │   │   └── buildSteps/        # admin (revisions/firmware/steps) +
+│   │   │                          #   worker walkthrough + per-step runner
 │   │   └── shared/
 │   │       ├── components/        # ui/ + layout/AppSidebar
 │   │       └── lib/               # api.js (authFetch) + utils.js

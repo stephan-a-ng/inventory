@@ -24,7 +24,7 @@ This is **not** the canonical MoonFive Next.js stack. See [DECISIONS.md](DECISIO
 
 ## Critical rules
 
-1. **Vertical slicing** — code lives in `backend/app/features/<slice>/` and `frontend/src/features/<slice>/`. Slice boundaries: `auth`, `devices`, `stages`, `subsystems`, `audit`, plus frontend-only `scanning` and `import`. Cross-slice imports must go through the slice's barrel (`__init__.py` for Python, `index.js` for JS).
+1. **Vertical slicing** — code lives in `backend/app/features/<slice>/` and `frontend/src/features/<slice>/`. Slice boundaries: `auth`, `devices`, `stages`, `subsystems`, `audit`, `build_steps` (backend) / `buildSteps` (frontend), plus frontend-only `scanning` and `import`. Cross-slice imports must go through the slice's barrel (`__init__.py` for Python, `index.js` for JS).
 2. **One file owns the DB pool**: `backend/app/shared/db.py` — the `DatabasePool` singleton with `search_path: inventory` baked in. Tests reset state via `backend/tests/conftest.py` against a separate test pool.
 3. **One file owns the API client**: `frontend/src/shared/lib/api.js` — `authFetch` lives here. Components import it through `@/shared/lib/api`, never reach into useAuth's internals.
 4. **Parameterized SQL only.** Always `$1, $2, …` with asyncpg. Never string-interpolate user input into a query.

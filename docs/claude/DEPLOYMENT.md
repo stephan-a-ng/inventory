@@ -14,10 +14,12 @@ The canonical deploy entry point is **`deploy.sh`** at the repo root. This docum
 | Backend URL | `https://inventory-api-staging-329274314764.us-central1.run.app` | `https://inventory-api-production-329274314764.us-central1.run.app` |
 | Cloud Run services | `inventory-api-staging`, `inventory-frontend-staging` | `inventory-api-production`, `inventory-frontend-production` |
 | Cloud SQL instance | `moonfive-crm:us-central1:crm-db` (shared) | `moonfive-crm:us-central1:crm-db` (shared) |
-| DB / schema | `crm_staging` database, `inventory` schema | `crm_production` database, `inventory` schema |
+| DB / schema | `inventory_staging` database, `inventory` schema | `inventory_production` database, `inventory` schema |
 | Secrets prefix | `inventory-*-staging` | `inventory-*-production` |
 | Google OAuth client | staging-only Client ID | production-only Client ID |
 | Authorized OAuth domain | `moonfive.tech` | `moonfive.tech` |
+| Photo bucket | `gs://moonfive-inventory-photos-staging` | `gs://moonfive-inventory-photos-production` |
+| Cloud Run service account | `inventory-api@moonfive-crm.iam.gserviceaccount.com` | `inventory-api@moonfive-crm.iam.gserviceaccount.com` (same SA) |
 
 > **The Cloud SQL instance is shared with the CRM app.** Isolation happens at the **schema** level: `search_path: inventory` on the pool keeps every query inside the `inventory` schema. A migration mistake in inventory cannot affect the CRM tables in the same database.
 
@@ -80,6 +82,85 @@ Both environments have their own Google OAuth client registered in Google Cloud 
 | Google OAuth client secret | `inventory-google-client-secret-staging` | `inventory-google-client-secret-production` |
 
 All are bound to the Cloud Run runtime SA (`329274314764-compute@developer.gserviceaccount.com`) via `--set-secrets` at deploy time. Rotation does not require a code change — `Cloud Run :latest` resolves to the newest version on next deploy.
+
+---
+
+## Photo storage (GCS)
+
+Build-step reference photos and worker-captured proof photos live in
+per-env Google Cloud Storage buckets. The backend writes via multipart
+upload and serves via 5-minute v4 signed URLs.
+
+| Resource | Staging | Production |
+|---|---|---|
+| Bucket | `moonfive-inventory-photos-staging` | `moonfive-inventory-photos-production` |
+| Cloud Run service account | `inventory-api@moonfive-crm.iam.gserviceaccount.com` | `inventory-api@moonfive-crm.iam.gserviceaccount.com` (one SA, dual-bound) |
+| Bucket IAM grant | `roles/storage.objectAdmin` on bucket only | `roles/storage.objectAdmin` on bucket only |
+| Self-binding (for `signBlob`) | `roles/iam.serviceAccountTokenCreator` on `inventory-api@...` | same |
+| Lifecycle | `Age > 30d` → `Delete` | `Age > 90d` → `Nearline` (no auto-delete) |
+| Public access prevention | `enforced` | `enforced` |
+| Uniform bucket-level access | `on` | `on` |
+
+**Why a dedicated SA?** The default Cloud Run compute SA
+(`329274314764-compute@developer.gserviceaccount.com`) is project-wide
+and over-broad. `inventory-api@...` scopes to just the two photo
+buckets. Signing URLs from inside Cloud Run requires
+`roles/iam.serviceAccountTokenCreator` on the SA itself because the
+metadata-server credentials have no private key — see
+`backend/app/shared/photo_storage.py:signed_url` for the
+IAM `signBlob` path.
+
+**One-time bootstrap (per env):**
+
+```bash
+# 1. Create the SA (idempotent — run once per project).
+gcloud iam service-accounts create inventory-api \
+  --project=moonfive-crm \
+  --display-name="Inventory API runtime"
+
+# 2. Allow it to sign blobs on its own behalf.
+gcloud iam service-accounts add-iam-policy-binding \
+  inventory-api@moonfive-crm.iam.gserviceaccount.com \
+  --member=serviceAccount:inventory-api@moonfive-crm.iam.gserviceaccount.com \
+  --role=roles/iam.serviceAccountTokenCreator \
+  --project=moonfive-crm
+
+# 3. Per-env bucket (creates bucket with uniform access + PAP enforced).
+BUCKET=moonfive-inventory-photos-staging   # or -production
+gcloud storage buckets create gs://$BUCKET \
+  --project=moonfive-crm --location=us-central1 \
+  --uniform-bucket-level-access --public-access-prevention
+
+# 4. Grant the SA write access on the bucket only.
+gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
+  --member=serviceAccount:inventory-api@moonfive-crm.iam.gserviceaccount.com \
+  --role=roles/storage.objectAdmin
+
+# 5. Lifecycle (staging — auto-delete after 30 days):
+cat > /tmp/lifecycle.json <<'JSON'
+{ "lifecycle": { "rule": [ { "action": { "type": "Delete" },
+  "condition": { "age": 30 } } ] } }
+JSON
+gcloud storage buckets update gs://moonfive-inventory-photos-staging \
+  --lifecycle-file=/tmp/lifecycle.json
+
+# 5b. Lifecycle (production — Nearline after 90 days):
+cat > /tmp/lifecycle.json <<'JSON'
+{ "lifecycle": { "rule": [ { "action": { "type": "SetStorageClass",
+  "storageClass": "NEARLINE" }, "condition": { "age": 90 } } ] } }
+JSON
+gcloud storage buckets update gs://moonfive-inventory-photos-production \
+  --lifecycle-file=/tmp/lifecycle.json
+```
+
+The deploy script wires `GCS_BUCKET` and `GCS_SIGNER_SA_EMAIL` via
+`--set-env-vars`, and binds the Cloud Run service to `inventory-api@...`
+via `--service-account`. No secrets needed.
+
+**Local dev** runs against `fsouza/fake-gcs-server` (a `gcs` service in
+`docker-compose.yml`); `STORAGE_EMULATOR_HOST=http://gcs:4443` is set on
+the backend. The `signed_url()` helper detects the emulator and returns
+a plain emulator URL (the emulator doesn't enforce signatures).
 
 ---
 

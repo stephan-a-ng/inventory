@@ -17,6 +17,12 @@ STAGING_WEB=inventory-frontend-staging
 PROD_API=inventory-api-production
 PROD_WEB=inventory-frontend-production
 
+# Photo storage (one bucket per env, plus a single signer service account).
+# See docs/claude/DEPLOYMENT.md for the one-time bucket + IAM bootstrap.
+STAGING_PHOTO_BUCKET=moonfive-inventory-photos-staging
+PROD_PHOTO_BUCKET=moonfive-inventory-photos-production
+PHOTO_SIGNER_SA=inventory-api@moonfive-crm.iam.gserviceaccount.com
+
 # URLs (derived from Cloud Run project number — do not change)
 STAGING_API_URL=https://inventory-api-staging-329274314764.us-central1.run.app
 STAGING_WEB_URL=https://inventory-frontend-staging-329274314764.us-central1.run.app
@@ -50,7 +56,7 @@ ENV=$1
 
 deploy_backend() {
   local service=$1 frontend_url=$2 redirect_uri=$3 db_secret=$4 jwt_secret=$5 client_id_secret=$6 client_secret_secret=$7
-  local pop_secret=$8 mobile_ios_secret=$9 mobile_android_secret=${10}
+  local pop_secret=$8 mobile_ios_secret=$9 mobile_android_secret=${10} photo_bucket=${11}
 
   echo "→ Deploying backend: $service"
   gcloud run deploy "$service" \
@@ -60,8 +66,9 @@ deploy_backend() {
     --platform managed \
     --allow-unauthenticated \
     --add-cloudsql-instances "$CLOUDSQL_INSTANCE" \
+    --service-account "$PHOTO_SIGNER_SA" \
     --set-secrets "DATABASE_URL=${db_secret}:latest,JWT_SECRET=${jwt_secret}:latest,GOOGLE_CLIENT_ID=${client_id_secret}:latest,GOOGLE_CLIENT_SECRET=${client_secret_secret}:latest,POP_ENCRYPTION_KEY=${pop_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_IOS=${mobile_ios_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_ANDROID=${mobile_android_secret}:latest" \
-    --set-env-vars "ENVIRONMENT=${ENV},FRONTEND_URL=${frontend_url},GOOGLE_REDIRECT_URI=${redirect_uri},AUTHORIZED_DOMAIN=moonfive.tech"
+    --set-env-vars "ENVIRONMENT=${ENV},FRONTEND_URL=${frontend_url},GOOGLE_REDIRECT_URI=${redirect_uri},AUTHORIZED_DOMAIN=moonfive.tech,GCS_BUCKET=${photo_bucket},GCS_SIGNER_SA_EMAIL=${PHOTO_SIGNER_SA}"
 }
 
 deploy_frontend() {
@@ -114,7 +121,8 @@ if [[ "$ENV" == "staging" ]]; then
     inventory-google-client-secret-staging \
     inventory-pop-encryption-key-staging \
     inventory-mobile-google-client-id-ios-staging \
-    inventory-mobile-google-client-id-android-staging
+    inventory-mobile-google-client-id-android-staging \
+    "$STAGING_PHOTO_BUCKET"
 
   deploy_frontend "$STAGING_WEB" "inventory-frontend-staging" "$STAGING_API_URL" "$INSTALLER_APP_URL_SCHEME"
   health_check "$STAGING_API_URL" "$STAGING_WEB_URL"
@@ -137,7 +145,8 @@ elif [[ "$ENV" == "production" ]]; then
     inventory-google-client-secret-production \
     inventory-pop-encryption-key-production \
     inventory-mobile-google-client-id-ios-production \
-    inventory-mobile-google-client-id-android-production
+    inventory-mobile-google-client-id-android-production \
+    "$PROD_PHOTO_BUCKET"
 
   deploy_frontend "$PROD_WEB" "inventory-frontend-production" "$PROD_API_URL" "$INSTALLER_APP_URL_SCHEME"
   health_check "$PROD_API_URL" "$PROD_WEB_URL"
