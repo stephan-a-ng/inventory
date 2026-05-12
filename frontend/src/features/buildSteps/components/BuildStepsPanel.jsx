@@ -4,6 +4,7 @@ import { Input } from '@/shared/components/ui/input';
 import { ghostBtn, primaryBtn, dangerBtn } from '@/shared/lib/m5-styles';
 import RevisionPicker from './RevisionPicker';
 import SaveIndicator from './SaveIndicator';
+import ReferencePhotoSlot from './ReferencePhotoSlot';
 import { useAutoSave } from '../lib/useAutoSave';
 import {
   listBuildSteps,
@@ -132,6 +133,7 @@ export default function BuildStepsPanel() {
                   setHovered={setHovered}
                   onMove={(dir) => handleMove(step.id, dir)}
                   onDelete={() => handleDelete(step.id, step.title)}
+                  onStepUpdated={(updated) => setSteps((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s))}
                 />
               ))
             )}
@@ -177,7 +179,7 @@ export default function BuildStepsPanel() {
 }
 
 // ── single autosaving row ────────────────────────────────────────────────────
-function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelete }) {
+function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelete, onStepUpdated }) {
   const [draft, setDraft] = useState({
     title: step.title,
     description: step.description || '',
@@ -215,7 +217,7 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '40px 1fr 200px',
+        gridTemplateColumns: '40px 1fr 120px 180px',
         gap: 14,
         padding: '14px 16px',
         borderBottom: '1px solid var(--m5-rule)',
@@ -295,6 +297,8 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
           }}
         />
       </div>
+
+      <ReferencePhotoSlot step={step} onChange={onStepUpdated} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

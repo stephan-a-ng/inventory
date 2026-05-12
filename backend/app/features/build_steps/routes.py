@@ -6,12 +6,13 @@ worker capture, signed-URL serving) arrive in Phase B/C — the relevant
 columns and tables exist already so those phases are pure additions.
 """
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from app.features.audit import AuditService
 from app.features.auth import get_current_user, require_role
+from app.shared import photo_storage
 
 from .models import (
     BuildStepCreate,
@@ -59,7 +60,7 @@ def _ser_firmware(f: dict) -> dict:
     }
 
 
-def _ser_step(s: dict) -> dict:
+def _ser_step(s: dict, *, with_signed_reference: bool = False) -> dict:
     return {
         "id": str(s["id"]),
         "product_revision_id": str(s["product_revision_id"]),
@@ -68,6 +69,7 @@ def _ser_step(s: dict) -> dict:
         "title": s["title"],
         "description": s.get("description"),
         "reference_photo_key": s.get("reference_photo_key"),
+        "reference_photo_url": _maybe_sign(s.get("reference_photo_key")) if with_signed_reference else None,
         "required_photo_count": s["required_photo_count"],
         "created_at": s["created_at"].isoformat(),
         "updated_at": s["updated_at"].isoformat(),
@@ -93,6 +95,27 @@ def _ser_photo(p: dict, signed_url: Optional[str] = None) -> dict:
         "taken_by_user_id": str(p["taken_by_user_id"]) if p.get("taken_by_user_id") else None,
         "taken_at": p["taken_at"].isoformat(),
     }
+
+
+async def _read_image_upload(file: UploadFile) -> tuple[bytes, str, str]:
+    """Read a multipart file, enforce size + image magic. Returns (bytes, mime, ext)."""
+    data = await file.read()
+    if len(data) > photo_storage.MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=413, detail="Photo exceeds 4 MiB limit")
+    sniffed = photo_storage.sniff_image(data)
+    if not sniffed:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG, or WebP images are accepted")
+    return data, sniffed[0], sniffed[1]
+
+
+def _maybe_sign(key: Optional[str]) -> Optional[str]:
+    """Sign a key into a 5-min GET URL when GCS is enabled, else None."""
+    if not key or not photo_storage.is_enabled():
+        return None
+    try:
+        return photo_storage.signed_url(key, method="GET", expires_minutes=5)
+    except Exception:
+        return None
 
 
 # ── product revisions ────────────────────────────────────────────────────────
@@ -303,9 +326,9 @@ async def worker_view(
         "revision": _ser_revision(revision),
         "steps": [
             {
-                "step": _ser_step(item["step"]),
+                "step": _ser_step(item["step"], with_signed_reference=True),
                 "status": _ser_status(item["status"]),
-                "photos": [_ser_photo(p) for p in item["photos"]],
+                "photos": [_ser_photo(p, signed_url=_maybe_sign(p["photo_key"])) for p in item["photos"]],
             }
             for item in merged
         ],
@@ -334,3 +357,101 @@ async def toggle_step(
         new_value={"step_id": str(step_id), "checked": body.checked},
     )
     return _ser_status(status)
+
+
+# ── photo endpoints ──────────────────────────────────────────────────────────
+@router.post("/api/build-steps/{step_id}/reference-photo")
+async def upload_reference_photo(
+    step_id: UUID,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_role("admin")),
+):
+    if not photo_storage.is_enabled():
+        raise HTTPException(status_code=503, detail="Photo storage is not configured")
+    step = await BuildStepService.get(step_id)
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    data, mime, ext = await _read_image_upload(file)
+    key = f"build-steps/{step_id}/reference.{ext}"
+    photo_storage.put_object(key, data, content_type=mime)
+    # Clean up any prior reference photo so we don't leak storage.
+    prior = step.get("reference_photo_key")
+    if prior and prior != key:
+        photo_storage.delete_objects([prior])
+    updated = await BuildStepService.set_reference_photo_key(step_id, key)
+    return _ser_step(updated, with_signed_reference=True)
+
+
+@router.delete("/api/build-steps/{step_id}/reference-photo")
+async def delete_reference_photo(
+    step_id: UUID,
+    user: dict = Depends(require_role("admin")),
+):
+    step = await BuildStepService.get(step_id)
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    prior = step.get("reference_photo_key")
+    if prior and photo_storage.is_enabled():
+        photo_storage.delete_objects([prior])
+    updated = await BuildStepService.set_reference_photo_key(step_id, None)
+    return _ser_step(updated)
+
+
+@router.post("/api/devices/{device_id}/build-steps/{step_id}/photos")
+async def upload_device_photo(
+    device_id: UUID,
+    step_id: UUID,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_role("admin", "technician")),
+):
+    if not photo_storage.is_enabled():
+        raise HTTPException(status_code=503, detail="Photo storage is not configured")
+    from app.features.devices.services import DeviceService
+    if not await DeviceService.get_device(device_id):
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not await BuildStepService.get(step_id):
+        raise HTTPException(status_code=404, detail="Step not found")
+
+    data, mime, ext = await _read_image_upload(file)
+    photo_id = uuid4()
+    key = f"device-photos/{device_id}/{step_id}/{photo_id}.{ext}"
+    photo_storage.put_object(key, data, content_type=mime)
+    record = await DeviceProgressService.add_photo(
+        device_id=device_id, build_step_id=step_id,
+        photo_key=key, taken_by_user_id=user["id"],
+    )
+    await AuditService.log_action(
+        device_id=device_id, user_id=user["id"],
+        action="build_step_photo_added",
+        new_value={"step_id": str(step_id), "photo_id": str(record["id"])},
+    )
+    return _ser_photo(record, signed_url=_maybe_sign(key))
+
+
+@router.delete("/api/devices/{device_id}/build-step-photos/{photo_id}")
+async def delete_device_photo(
+    device_id: UUID,
+    photo_id: UUID,
+    user: dict = Depends(require_role("admin", "technician")),
+):
+    deleted = await DeviceProgressService.delete_photo(photo_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if str(deleted["device_id"]) != str(device_id):
+        # Belongs to a different device — re-insert to avoid silent data loss.
+        await DeviceProgressService.add_photo(
+            device_id=deleted["device_id"],
+            build_step_id=deleted["build_step_id"],
+            photo_key=deleted["photo_key"],
+            taken_by_user_id=deleted.get("taken_by_user_id"),
+            caption=deleted.get("caption"),
+        )
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if photo_storage.is_enabled() and deleted.get("photo_key"):
+        photo_storage.delete_objects([deleted["photo_key"]])
+    await AuditService.log_action(
+        device_id=device_id, user_id=user["id"],
+        action="build_step_photo_deleted",
+        new_value={"photo_id": str(photo_id)},
+    )
+    return {"status": "deleted"}
