@@ -18,6 +18,7 @@ class DeviceCreate(BaseModel):
     location: Optional[str] = None
     site_name: Optional[str] = None
     notes: Optional[str] = None
+    firmware_deviation_reason: Optional[str] = None
 
 
 class DeviceUpdate(BaseModel):
@@ -30,6 +31,7 @@ class DeviceUpdate(BaseModel):
     location: Optional[str] = None
     site_name: Optional[str] = None
     notes: Optional[str] = None
+    firmware_deviation_reason: Optional[str] = None
 
 
 class DeviceOut(BaseModel):
@@ -45,6 +47,7 @@ class DeviceOut(BaseModel):
     location: Optional[str] = None
     site_name: Optional[str] = None
     notes: Optional[str] = None
+    firmware_deviation_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

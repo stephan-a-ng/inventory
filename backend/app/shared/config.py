@@ -46,3 +46,10 @@ MOBILE_GOOGLE_CLIENT_ID_ANDROID = os.getenv("MOBILE_GOOGLE_CLIENT_ID_ANDROID", "
 
 def mobile_google_client_ids() -> list[str]:
     return [cid for cid in (MOBILE_GOOGLE_CLIENT_ID_IOS, MOBILE_GOOGLE_CLIENT_ID_ANDROID) if cid]
+
+# Firmware-release version check. The DeviceDetail Firmware-stage card
+# compares each device's firmware_version against the latest GitHub release
+# tag for its product type. Cache prevents hitting GitHub's anonymous
+# 60-req/hour rate limit. Optional token bumps the limit to 5000/hour.
+FIRMWARE_RELEASE_CACHE_TTL_SECONDS = int(os.getenv("FIRMWARE_RELEASE_CACHE_TTL_SECONDS", "3600"))
+GITHUB_API_TOKEN = os.getenv("GITHUB_API_TOKEN", "")

@@ -42,6 +42,7 @@ def _serialize_device(d: dict, *, include_pop: bool = False) -> dict:
         "location": d.get("location"),
         "site_name": d.get("site_name"),
         "notes": d.get("notes"),
+        "firmware_deviation_reason": d.get("firmware_deviation_reason"),
         "created_at": d["created_at"].isoformat(),
         "updated_at": d["updated_at"].isoformat(),
     }
