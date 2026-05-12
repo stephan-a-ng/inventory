@@ -33,8 +33,6 @@ function mockApi({
   device,
   stages = STAGES,
   audit = [],
-  subsystems = [],
-  boardRevisions = [],
 }) {
   globalThis.fetch.mockImplementation(async (url, opts) => {
     if (url === `/api/devices/${DEVICE_ID}` && (!opts || opts.method === undefined)) {
@@ -45,12 +43,6 @@ function mockApi({
     }
     if (url === `/api/audit/${DEVICE_ID}`) {
       return new Response(JSON.stringify(audit), { status: 200 });
-    }
-    if (url.startsWith('/api/subsystems')) {
-      return new Response(JSON.stringify(subsystems), { status: 200 });
-    }
-    if (url === `/api/devices/${DEVICE_ID}/board-revisions` && (!opts || opts.method === undefined)) {
-      return new Response(JSON.stringify(boardRevisions), { status: 200 });
     }
     if (url === `/api/devices/${DEVICE_ID}` && opts?.method === 'PATCH') {
       return new Response(JSON.stringify({ ...device, ...JSON.parse(opts.body) }), {
@@ -191,22 +183,6 @@ describe('<DeviceDetail />', () => {
     expect(screen.getByText(/Queued/i)).toBeInTheDocument();
     // status chip on a future stage reads Pending
     expect(screen.getByText(/^Pending$/i)).toBeInTheDocument();
-  });
-
-  it('renders board revision inputs on the Assembly panel when subsystems exist', async () => {
-    mockApi({
-      device: baseDevice,
-      subsystems: [{ id: 'sub1', name: 'Main board', product_type: 'EVSE', sort_order: 1 }],
-    });
-    renderPage();
-
-    await screen.findByRole('heading', { level: 2, name: 'Calibration' });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Assembly/ }));
-
-    await screen.findByRole('heading', { level: 2, name: 'Assembly' });
-    expect(await screen.findByLabelText('Main board revision')).toBeInTheDocument();
-    expect(screen.getByLabelText('Main board part number')).toBeInTheDocument();
   });
 
   it('Back to overview navigates to /devices/:id', async () => {

@@ -8,7 +8,6 @@ import useAuth from '@/features/auth/useAuth';
 import { formatRelativeTime } from '@/features/audit/utils/relativeTime';
 import './DeviceDetail.css';
 
-const ASSEMBLY_NAMES = new Set(['assembly', 'build', 'mechanical']);
 const FIRMWARE_NAMES = new Set(['firmware']);
 
 function pad2(n) {
@@ -138,9 +137,6 @@ export default function DeviceDetail() {
   const [device, setDevice] = useState(null);
   const [stages, setStages] = useState([]);
   const [audit, setAudit] = useState([]);
-  const [subsystems, setSubsystems] = useState([]);
-  const [boardRevisions, setBoardRevisions] = useState([]);
-  const [revisionEdits, setRevisionEdits] = useState({});
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [activeStageId, setActiveStageId] = useState(null);
@@ -174,56 +170,15 @@ export default function DeviceDetail() {
           setStages(filtered);
           setActiveStageId((prev) => prev || d.current_stage_id || filtered[0]?.id || null);
         }
-        await loadBoardData(d.product_type);
       }
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadBoardData(productType) {
-    const [subsRes, revRes] = await Promise.all([
-      fetch(`/api/subsystems?product_type=${productType}`, { credentials: 'include' }),
-      fetch(`/api/devices/${id}/board-revisions`, { credentials: 'include' }),
-    ]);
-    if (subsRes.ok) setSubsystems(await subsRes.json());
-    if (revRes.ok) {
-      const revs = await revRes.json();
-      setBoardRevisions(revs);
-      const edits = {};
-      revs.forEach((r) => {
-        edits[r.subsystem_id] = {
-          revision: r.revision || '',
-          component_number: r.component_number || '',
-        };
-      });
-      setRevisionEdits(edits);
-    }
-  }
-
   async function loadAudit() {
     const res = await fetch(`/api/audit/${id}`, { credentials: 'include' });
     if (res.ok) setAudit(await res.json());
-  }
-
-  async function saveRevision(subsystemId) {
-    const edit = revisionEdits[subsystemId] || {};
-    const res = await fetch(`/api/devices/${id}/board-revisions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        subsystem_id: subsystemId,
-        revision: edit.revision || null,
-        component_number: edit.component_number || null,
-      }),
-    });
-    if (res.ok) {
-      await loadBoardData(device.product_type);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      alert(data.detail || 'Failed to save board revision');
-    }
   }
 
   function requestAdvanceStage() {
@@ -305,13 +260,12 @@ export default function DeviceDetail() {
   const activeStatus = activeStage ? stageStatus(activeStage, device.current_stage_id, stages) : 'todo';
   const activeWindow = activeStage ? stageWindows[activeStage.id] : null;
 
-  const isAssemblyPanel =
-    activeStage && ASSEMBLY_NAMES.has(activeStage.name.toLowerCase());
   const isFirmwarePanel =
     activeStage && FIRMWARE_NAMES.has(activeStage.name.toLowerCase());
+  // CHARGER was renamed to EVSE; keep PoP card scoped to that product type.
   const showFirmwarePopCard =
     isFirmwarePanel &&
-    device.product_type === 'CHARGER' &&
+    device.product_type === 'EVSE' &&
     user?.role &&
     user.role !== 'viewer';
 
@@ -523,72 +477,7 @@ export default function DeviceDetail() {
                 </div>
               )}
 
-              {/* Assembly: board revisions inline */}
-              {isAssemblyPanel && subsystems.length > 0 && (
-                <div className="sec">
-                  <div className="sh">
-                    <h3>
-                      <span className="yb" />
-                      Board revisions
-                    </h3>
-                    <span className="sub">
-                      {boardRevisions.length}/{subsystems.length} recorded
-                    </span>
-                  </div>
-                  <div className="rev-grid">
-                    {subsystems.map((sub) => {
-                      const edit = revisionEdits[sub.id] || {
-                        revision: '',
-                        component_number: '',
-                      };
-                      return (
-                        <div key={sub.id} className="rev-row">
-                          <span className="sub-name">{sub.name}</span>
-                          <input
-                            type="text"
-                            className="rev-input"
-                            value={edit.revision}
-                            onChange={(e) =>
-                              setRevisionEdits((prev) => ({
-                                ...prev,
-                                [sub.id]: { ...edit, revision: e.target.value },
-                              }))
-                            }
-                            placeholder="Revision (e.g. Rev B)"
-                            disabled={!canEdit}
-                            aria-label={`${sub.name} revision`}
-                          />
-                          <input
-                            type="text"
-                            className="rev-input"
-                            value={edit.component_number}
-                            onChange={(e) =>
-                              setRevisionEdits((prev) => ({
-                                ...prev,
-                                [sub.id]: { ...edit, component_number: e.target.value },
-                              }))
-                            }
-                            placeholder="Part number"
-                            disabled={!canEdit}
-                            aria-label={`${sub.name} part number`}
-                          />
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className="rev-save"
-                              onClick={() => saveRevision(sub.id)}
-                            >
-                              Save
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Firmware: per-device WiFi-commissioning PoP for CHARGER devices */}
+              {/* Firmware: per-device WiFi-commissioning PoP for EVSE devices */}
               {showFirmwarePopCard && <FirmwarePopCard device={device} />}
 
               {/* Stage events list — derived from audit log scoped to this window */}
