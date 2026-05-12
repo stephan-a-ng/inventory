@@ -35,7 +35,11 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5180}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: http://localhost:8000/api/auth/google/callback
+      # Callback goes through the frontend nginx (/api/* → backend) so the
+      # oauth_state cookie set on the frontend origin survives the round-trip.
+      # Mirrors production. Requires the staging OAuth client to whitelist
+      # http://localhost:5180/api/auth/google/callback as a redirect URI.
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:5180/api/auth/google/callback}
       # Dev defaults for the new PoP feature — staging/prod read these from Secret Manager.
       POP_ENCRYPTION_KEY: ${POP_ENCRYPTION_KEY:-ouu1aARMcEOxbR04uMSR_VlhXAhAqPSfzHR8iIeUknA=}
       MOBILE_GOOGLE_CLIENT_ID_IOS: ${MOBILE_GOOGLE_CLIENT_ID_IOS:-}
