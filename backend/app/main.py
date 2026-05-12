@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.features.audit import router as audit_router
 from app.features.auth import router as auth_router
+from app.features.build_steps import router as build_steps_router
 from app.features.devices import qr_router, router as devices_router
 from app.features.devices.serial_service import backfill_missing_serials
 from app.features.devices.uuid_backfill import backfill_v4_ids_to_v7
@@ -58,6 +59,7 @@ app.include_router(stages_router)
 app.include_router(subsystems_router)
 app.include_router(board_revision_router)
 app.include_router(users_router)
+app.include_router(build_steps_router)
 
 
 @app.get("/api/health")

@@ -80,12 +80,17 @@ if "inventory_test" not in TEST_DB_URL:
 
 @pytest_asyncio.fixture(scope="session")
 async def pg_pool() -> AsyncIterator[asyncpg.Pool]:
-    """Session-scoped test DB pool. Applies schema once at startup."""
+    """Session-scoped test DB pool. Applies schema once at startup.
+
+    Uses the same `init=_register_codecs` hook as production so JSONB
+    columns accept dict inputs (e.g. AuditService.log_action's new_value).
+    """
     pool = await asyncpg.create_pool(
         TEST_DB_URL,
         min_size=1,
         max_size=5,
         server_settings={"search_path": "inventory"},
+        init=db_module._register_codecs,
     )
     schema_path = Path(__file__).resolve().parent / "app" / "shared" / "schema.sql"
     async with pool.acquire() as conn:
@@ -100,7 +105,10 @@ async def clean_db(pg_pool: asyncpg.Pool):
     async with pg_pool.acquire() as conn:
         await conn.execute(
             "TRUNCATE inventory.audit_log, inventory.board_revisions, "
-            "inventory.devices, inventory.users RESTART IDENTITY CASCADE"
+            "inventory.build_step_photos, inventory.device_build_step_status, "
+            "inventory.build_steps, inventory.firmware_versions, "
+            "inventory.product_revisions, inventory.devices, inventory.users "
+            "RESTART IDENTITY CASCADE"
         )
     yield pg_pool
 

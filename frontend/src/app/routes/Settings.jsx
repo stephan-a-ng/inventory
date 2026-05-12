@@ -4,10 +4,14 @@ import { useAuth } from '@/features/auth';
 import { StagesPanel } from '@/features/stages';
 import { SubsystemsPanel } from '@/features/subsystems';
 import { UserManagementPanel } from '@/features/users';
+import { RevisionsPanel, FirmwareVersionsPanel, BuildStepsPanel } from '@/features/buildSteps';
 
 const SECTIONS = [
   { id: 'stages', label: 'Commissioning Stages' },
   { id: 'subsystems', label: 'Board Subsystems' },
+  { id: 'revisions', label: 'Revisions' },
+  { id: 'firmware', label: 'Firmware Versions' },
+  { id: 'buildSteps', label: 'Build Steps' },
   { id: 'users', label: 'Team & Roles' },
 ];
 
@@ -99,6 +103,9 @@ export default function Settings() {
 
           {activeSection === 'stages' && <StagesPanel />}
           {activeSection === 'subsystems' && <SubsystemsPanel />}
+          {activeSection === 'revisions' && <RevisionsPanel />}
+          {activeSection === 'firmware' && <FirmwareVersionsPanel />}
+          {activeSection === 'buildSteps' && <BuildStepsPanel />}
           {activeSection === 'users' && <UserManagementPanel />}
         </div>
       </main>
