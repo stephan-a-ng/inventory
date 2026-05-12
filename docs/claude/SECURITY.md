@@ -14,7 +14,7 @@ These rules are MoonFive-wide. They exist because the org lost real money to an 
 4. **Secret naming is `inventory-<resource>-<env>`.** Cloud Run services receive secrets via `--set-secrets`, never `--set-env-vars=KEY=value` for sensitive values.
 5. **Cloud Run runtime SA is the runtime identity.** Currently `329274314764-compute@developer.gserviceaccount.com` (the default Compute SA). This is a known suboptimal — see ROADMAP.md for migration to a dedicated SA. New services should not be created on the default SA.
 6. **JWT cookie hygiene** — `auth_token` is `httpOnly`, `Secure` in production, `SameSite=Lax`. Never set `SameSite=None` without a documented cross-origin requirement.
-7. **No PII in logs.** Emails are fine for auditability (it's how we attribute changes). Passwords, JWTs, OAuth codes, refresh tokens — never.
+7. **No PII in logs.** Emails are fine for auditability (it's how we attribute changes). Passwords, JWTs, OAuth codes, refresh tokens, **PoP values** — never.
 
 ---
 
@@ -38,8 +38,10 @@ If someone adds an AI integration, a payment SDK, or a third-party API key, they
 |---|---|---|
 | DB connection string | Secret Manager `inventory-database-url-<env>` | Cloud Run runtime SA (backend service) |
 | JWT signing key | Secret Manager `inventory-jwt-secret-<env>` | Cloud Run runtime SA (backend service) |
-| Google OAuth client ID | Secret Manager `inventory-google-client-id-<env>` (also documented in `deploy.sh` comment block — these are kept in sync) | Cloud Run runtime SA (backend service) |
-| Google OAuth client secret | Secret Manager `inventory-google-client-secret-<env>` | Cloud Run runtime SA (backend service) |
+| Google OAuth client ID (web) | Secret Manager `inventory-google-client-id-<env>` (also documented in `deploy.sh` comment block — these are kept in sync) | Cloud Run runtime SA (backend service) |
+| Google OAuth client secret (web) | Secret Manager `inventory-google-client-secret-<env>` | Cloud Run runtime SA (backend service) |
+| PoP encryption key | Secret Manager `inventory-pop-encryption-key-<env>` | Cloud Run runtime SA (backend service) |
+| Mobile Google OAuth client IDs | Secret Manager `inventory-mobile-google-client-id-{ios,android}-<env>` | Cloud Run runtime SA (backend service) |
 
 Local dev uses a `.env` file at the repo root (gitignored) for the staging OAuth client ID + secret, so a developer can run the OAuth flow against `localhost`. `.env.production` mirrors this for occasional production-OAuth testing — also gitignored.
 
@@ -57,8 +59,53 @@ Local dev uses a `.env` file at the repo root (gitignored) for the staging OAuth
 | Auth cookie `secure` | `True` in production | Blocks transmission over HTTP |
 | Auth cookie domain | not set (host-only) | We never need to share the cookie cross-subdomain |
 | JWT expiry | 7 days | Inventory is internal-tooling — UX wins over short-rotation here. Revisit if we add multi-tenant. |
+| Bearer token (mobile) | Same JWT format and signing key as the cookie path; accepted via `Authorization: Bearer <jwt>` | Reuses the existing trust surface — no second signing surface to compromise |
 | `login` rate limit | not implemented yet | See ROADMAP — currently low risk because login requires a `@moonfive.tech` Google account |
 | OpenAPI / docs endpoint (`/docs`) | enabled in all envs | Inventory is internal; the schema isn't sensitive. **If this app ever serves external users, gate `/docs` to non-prod.** |
+
+---
+
+## Per-device PoP (proof-of-possession) — WiFi commissioning
+
+The installer-app fetches a unique PoP per CHARGER device to complete the BLE Protocomm WiFi-commissioning handshake without anyone typing a key off a sticker. The full request/response contract lives in `installer-app/docs/inventory-pop-api.md`.
+
+### Storage
+
+- `devices.pop` is **encrypted at rest** with Fernet (`cryptography` lib). Ciphertext is stored as TEXT.
+- Key is read from `POP_ENCRYPTION_KEY`, supplied at deploy time from `inventory-pop-encryption-key-<env>`.
+- Rotating the secret invalidates every existing ciphertext — every CHARGER's PoP would need to be regenerated via the rotate endpoint or the factory tool. Do not rotate the secret unless prepared for that.
+- `pop_only_for_chargers` CHECK constraint backs the data integrity rule: PoP is null for AEMS/BEMS/NETWORKING rows.
+
+### Where the value must NOT appear
+
+| Surface | Rule |
+|---|---|
+| Audit log `old_value` / `new_value` | Only the *act* is logged (`pop_generated`, `pop_fetched`, `pop_rotated`). Never the value. |
+| CSV export | `pop` is intentionally absent from `EXPORT_COLUMNS` (`backend/app/features/devices/csv_service.py`). |
+| List endpoints (`GET /api/devices`) | `_serialize_device` opts in via `include_pop=True` — only `POST /api/devices` for a fresh CHARGER and `GET /api/devices/{mac}/pop` set it. |
+| Frontend initial page load | DeviceDetail never fetches the PoP until the user clicks "Reveal". |
+| Server logs | Endpoint handlers log the audit event, not the value. |
+
+### Access control
+
+| Role | Read PoP (`GET /api/devices/{mac}/pop`) | Rotate (`POST .../pop`) |
+|---|---|---|
+| `admin` | ✅ | ✅ |
+| `technician` | ✅ | ❌ |
+| `installer` | ✅ (mobile or web) | ❌ |
+| `viewer` | ❌ | ❌ |
+
+Both PoP endpoints respond with `Cache-Control: no-store` so intermediaries don't hold the value.
+
+### Mobile auth
+
+`POST /api/auth/mobile/google` accepts a Google ID token JWT and verifies it against Google's JWKS using `google-auth`. Audience must match one of two **separate** mobile OAuth client IDs (iOS, Android) — distinct from the web OAuth client so a compromised mobile build can't issue web-app sessions.
+
+Onboarding partner installers: an admin signs in to the web app, opens **Settings → Team & Roles**, and promotes the partner from `viewer` to `installer`. Until then, mobile auth returns 403 — the user must exist with a non-viewer role.
+
+### Rate limiting (future)
+
+The PoP-fetch endpoint should be per-user rate-limited (e.g., 60/min) to make a stolen-JWT mass-scrape obvious. Inventory has no rate-limit middleware in v1; we rely on the audit log + alerting until that lands.
 
 ---
 
@@ -70,6 +117,7 @@ A frontend bundle is public. For Inventory specifically:
 ✅ ALLOWED in the frontend bundle / Vite env vars:
 - API base URL (currently same-origin via nginx proxy, so no env var needed)
 - Google OAuth client ID (public-by-design)
+- VITE_INSTALLER_APP_URL (the installer-app deep-link scheme; public by definition)
 - Build-time constants (version banner, feature flags)
 
 ❌ FORBIDDEN — and currently absent — in the frontend bundle:
@@ -77,7 +125,9 @@ A frontend bundle is public. For Inventory specifically:
 - Any *_SECRET
 - Database connection strings
 - JWT signing keys
+- The PoP encryption key (Fernet)
 - The Google OAuth client SECRET (only the ID is public)
+- The mobile Google OAuth client IDs (those live in the Flutter app, not here)
 - Direct credentials to any GCP service
 ```
 
@@ -90,7 +140,7 @@ If a future feature ever needs a frontend-callable third-party API, it goes thro
 **Current state (known suboptimal):** all four services (`inventory-api-staging`, `inventory-frontend-staging`, `inventory-api-production`, `inventory-frontend-production`) run as the default Compute SA, which holds `roles/editor` project-wide. This is wider blast radius than necessary.
 
 **Target state:** a dedicated SA per service with minimum bindings:
-- `inventory-api-<env>` needs: `roles/cloudsql.client`, `roles/secretmanager.secretAccessor` (on the four `inventory-*-<env>` secrets only)
+- `inventory-api-<env>` needs: `roles/cloudsql.client`, `roles/secretmanager.secretAccessor` (on the seven `inventory-*-<env>` secrets only)
 - `inventory-frontend-<env>` needs: nothing — it's a static nginx; no GCP API calls
 
 Migration is in ROADMAP.md. Don't add NEW services on the default SA.
@@ -116,6 +166,7 @@ Inventory has no inbound webhooks. If you add one (Stripe, GitHub, etc.):
 | ~$15k Gemini bill on a project that doesn't use Gemini | Pre-existing browser key without HTTP-referrer restriction; Generative Language API was enabled for a different app on the same project | Apply HTTP-referrer restriction to every browser key on day 1; disable Generative Language API where unused |
 | `git ls-tree HEAD .env` shows it's tracked | `.gitignore` only covers `.env*.local`, not bare `.env` | Expand `.gitignore` to include bare `.env`; `git rm --cached .env` |
 | First-deploy `.env.production` ends up in git | A developer ran `cp .env.example .env.production` filling in real values and committed | Use the deploy bootstrap process; values live in Secret Manager from day 1 |
+| PoP plaintext shows up in `audit_log.new_value` | Caller passed the value into the audit payload instead of just the timestamp/act | Per the rule above: never include the value. `pop_fetched` carries `{}`, `pop_generated`/`pop_rotated` carries `{pop_generated_at: …}`. |
 
 ---
 
@@ -133,6 +184,8 @@ Inventory has no inbound webhooks. If you add one (Stripe, GitHub, etc.):
 | Billing budget alert | Cross-app, set on the `moonfive-crm` project |
 | `AI_DAILY_SPEND_CAP` | N/A — no AI integrations |
 | SECURITY-AUDIT run quarterly | **Pending** — first run scheduled |
+| PoP encryption-at-rest (`inventory-pop-encryption-key-<env>` in Secret Manager) | ✓ — wired in `deploy.sh` |
+| Mobile Google OAuth client IDs (iOS + Android) | **Pending** — secrets created out-of-band before first mobile deploy |
 
 ---
 

@@ -8,12 +8,14 @@ from app.shared.db import DatabasePool
 class AuditService:
     @staticmethod
     async def log_action(
-        device_id: UUID,
+        device_id: Optional[UUID],
         user_id: Optional[UUID],
         action: str,
         old_value: Optional[dict] = None,
         new_value: Optional[dict] = None,
     ):
+        """Append an audit row. device_id may be None for user-scoped events
+        (e.g., user_role_changed)."""
         await DatabasePool.execute(
             """INSERT INTO audit_log (device_id, user_id, action, old_value, new_value)
                VALUES ($1, $2, $3, $4, $5)""",

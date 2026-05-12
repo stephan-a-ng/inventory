@@ -125,3 +125,44 @@ INSERT INTO subsystems (product_type, name, sort_order) VALUES
   ('CHARGER', 'EVSE', 1),
   ('CHARGER', 'LoRa Hat', 2)
 ON CONFLICT (product_type, name) DO NOTHING;
+
+-- PoP (installer-app WiFi commissioning) — per-device, encrypted at rest.
+-- See docs/claude/SECURITY.md and installer-app/docs/inventory-pop-api.md.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS pop TEXT;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS pop_generated_at TIMESTAMPTZ;
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS pop_consumed_at TIMESTAMPTZ;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'pop_only_for_chargers' AND conrelid = 'inventory.devices'::regclass
+    ) THEN
+        ALTER TABLE devices
+            ADD CONSTRAINT pop_only_for_chargers
+            CHECK (pop IS NULL OR product_type = 'CHARGER');
+    END IF;
+END $$;
+
+-- Case-insensitive MAC lookups for GET /api/devices/{mac}/pop.
+CREATE INDEX IF NOT EXISTS idx_devices_mac_lower ON devices (LOWER(mac_address));
+
+-- Add the new 'installer' role to the existing users.role CHECK.
+DO $$
+DECLARE
+    cname TEXT;
+BEGIN
+    SELECT conname INTO cname FROM pg_constraint
+    WHERE conrelid = 'inventory.users'::regclass
+      AND contype = 'c'
+      AND pg_get_constraintdef(oid) LIKE '%role%admin%technician%viewer%'
+      AND pg_get_constraintdef(oid) NOT LIKE '%installer%'
+    LIMIT 1;
+
+    IF cname IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE inventory.users DROP CONSTRAINT %I', cname);
+        ALTER TABLE inventory.users
+            ADD CONSTRAINT users_role_check
+            CHECK (role IN ('admin', 'technician', 'installer', 'viewer'));
+    END IF;
+END $$;

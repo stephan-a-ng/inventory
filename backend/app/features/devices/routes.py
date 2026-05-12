@@ -1,21 +1,29 @@
 """Device routes"""
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
 from app.features.auth import get_current_user, require_role
 from app.features.audit import AuditService
 
 from .models import DeviceCreate, DeviceUpdate, BulkStageRequest
-from .services import DeviceService
+from .services import (
+    DeviceNotFoundError,
+    DevicePopMissingError,
+    DeviceService,
+)
 from .csv_service import CsvService
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 
 
-def _serialize_device(d: dict) -> dict:
-    """Convert asyncpg Record fields to serializable types."""
-    return {
+def _serialize_device(d: dict, *, include_pop: bool = False) -> dict:
+    """Convert asyncpg Record fields to serializable types.
+
+    `include_pop` is opt-in and only used on the create response for CHARGER
+    devices. Listing, GET-by-id, and CSV export never include the PoP.
+    """
+    out = {
         "id": str(d["id"]),
         "mac_address": d["mac_address"],
         "device_name": d.get("device_name"),
@@ -31,6 +39,11 @@ def _serialize_device(d: dict) -> dict:
         "created_at": d["created_at"].isoformat(),
         "updated_at": d["updated_at"].isoformat(),
     }
+    if include_pop and d.get("pop"):
+        out["pop"] = d["pop"]
+        if d.get("pop_generated_at"):
+            out["pop_generated_at"] = d["pop_generated_at"].isoformat()
+    return out
 
 
 @router.get("")
@@ -60,6 +73,7 @@ async def list_devices(
 @router.post("")
 async def create_device(
     device: DeviceCreate,
+    response: Response,
     user: dict = Depends(require_role("admin", "technician")),
 ):
     try:
@@ -70,7 +84,19 @@ async def create_device(
             action="created",
             new_value={"mac_address": created["mac_address"], "product_type": created["product_type"]},
         )
-        return _serialize_device(created)
+        # Auto-PoP audit + no-cache response for CHARGER devices.
+        if created.get("pop"):
+            await AuditService.log_action(
+                device_id=created["id"],
+                user_id=user["id"],
+                action="pop_generated",
+                new_value={
+                    "pop_generated_at": created["pop_generated_at"].isoformat()
+                    if created.get("pop_generated_at") else None
+                },
+            )
+            response.headers["Cache-Control"] = "no-store"
+        return _serialize_device(created, include_pop=True)
     except Exception as e:
         if "unique" in str(e).lower():
             raise HTTPException(status_code=409, detail="Device with this MAC address already exists")
@@ -88,6 +114,93 @@ async def lookup_by_mac(mac_address: str, user: dict = Depends(get_current_user)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     return _serialize_device(device)
+
+
+@router.get("/export")
+async def export_devices(
+    product_type: Optional[str] = Query(None),
+    stage_id: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    csv_content = await CsvService.export_csv(product_type=product_type, stage_id=stage_id)
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=devices-export.csv"},
+    )
+
+
+@router.get("/{mac_address}/pop")
+async def get_device_pop(
+    mac_address: str,
+    response: Response,
+    user: dict = Depends(require_role("admin", "technician", "installer")),
+):
+    """Retrieve the per-device PoP. Used by the installer app's commissioning flow.
+
+    The act of fetching is audit-logged; the value is never logged anywhere.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = await DeviceService.get_pop(mac_address)
+    except DeviceNotFoundError:
+        raise HTTPException(status_code=404, detail="Device not found")
+    except DevicePopMissingError:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Device has no PoP. Use POST /api/devices/{mac}/pop to generate one."
+            ),
+        )
+
+    await AuditService.log_action(
+        device_id=result["id"],
+        user_id=user["id"],
+        action="pop_fetched",
+        new_value={},
+    )
+    return {
+        "mac_address": result["mac_address"],
+        "device_name": result["device_name"],
+        "pop": result["pop"],
+        "pop_generated_at": result["pop_generated_at"].isoformat()
+        if result["pop_generated_at"] else None,
+    }
+
+
+@router.post("/{mac_address}/pop", status_code=201)
+async def rotate_device_pop(
+    mac_address: str,
+    response: Response,
+    user: dict = Depends(require_role("admin")),
+):
+    """Generate (or rotate) the PoP for a CHARGER device.
+
+    Used by the factory tool on first flash, or by an admin to invalidate
+    a compromised key. Audit-logged as pop_generated (first time) or
+    pop_rotated (subsequent rotations).
+    """
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = await DeviceService.rotate_pop(mac_address)
+    except DeviceNotFoundError:
+        raise HTTPException(status_code=404, detail="Device not found")
+    except DevicePopMissingError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    await AuditService.log_action(
+        device_id=result["id"],
+        user_id=user["id"],
+        action="pop_rotated" if result["rotated_from_existing"] else "pop_generated",
+        new_value={"pop_generated_at": result["pop_generated_at"].isoformat()},
+    )
+    return {
+        "mac_address": result["mac_address"],
+        "device_name": result["device_name"],
+        "pop": result["pop"],
+        "pop_generated_at": result["pop_generated_at"].isoformat(),
+        "rotated_from_existing": result["rotated_from_existing"],
+    }
 
 
 @router.get("/{device_id}")
@@ -183,17 +296,3 @@ async def bulk_import(
         "errors": parse_errors + import_errors,
         "total_rows": len(rows) + len(parse_errors),
     }
-
-
-@router.get("/export")
-async def export_devices(
-    product_type: Optional[str] = Query(None),
-    stage_id: Optional[str] = Query(None),
-    user: dict = Depends(get_current_user),
-):
-    csv_content = await CsvService.export_csv(product_type=product_type, stage_id=stage_id)
-    return StreamingResponse(
-        iter([csv_content]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=devices-export.csv"},
-    )
