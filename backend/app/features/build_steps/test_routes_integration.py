@@ -10,6 +10,22 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
+# ── helpers ──────────────────────────────────────────────────────────────────
+async def _make_revision(client, label: str = "v2", is_default: bool = True) -> dict:
+    return (await client.post("/api/product-revisions",
+        json={"product_type": "EVSE", "label": label, "is_default": is_default})).json()
+
+
+async def _make_set(client, revision_id: str, stage_key: str = "Assembly",
+                    label: str = "v1", is_active: bool = True) -> dict:
+    r = await client.post("/api/instruction-sets", json={
+        "product_revision_id": revision_id, "stage_key": stage_key,
+        "label": label, "is_active": is_active,
+    })
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 # ── product revisions ────────────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_list_revisions_empty_after_truncate(client, auth_user):
@@ -122,46 +138,99 @@ async def test_set_firmware_standard_clears_previous(client, auth_user):
     assert standards[0]["id"] == b["id"]
 
 
+# ── instruction sets ─────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_create_set_and_activate(client, auth_user):
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    v1 = await _make_set(client, rev["id"], label="v1", is_active=True)
+    v2 = await _make_set(client, rev["id"], label="v2", is_active=False)
+
+    listed = (await client.get(
+        f"/api/instruction-sets?product_revision_id={rev['id']}&stage_key=Assembly"
+    )).json()
+    assert {s["label"] for s in listed} == {"v1", "v2"}
+    actives = [s for s in listed if s["is_active"]]
+    assert [s["label"] for s in actives] == ["v1"]
+
+    r = await client.post(f"/api/instruction-sets/{v2['id']}/activate")
+    assert r.status_code == 200
+    refreshed = (await client.get(
+        f"/api/instruction-sets?product_revision_id={rev['id']}&stage_key=Assembly"
+    )).json()
+    actives = [s for s in refreshed if s["is_active"]]
+    assert len(actives) == 1
+    assert actives[0]["id"] == v2["id"]
+
+
+@pytest.mark.asyncio
+async def test_clone_set_copies_steps_and_sub_steps(client, auth_user):
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    v1 = await _make_set(client, rev["id"], label="v1", is_active=True)
+    step = (await client.post("/api/build-steps", json={
+        "instruction_set_id": v1["id"], "title": "Land wires",
+    })).json()
+    sub1 = (await client.post(f"/api/build-steps/{step['id']}/sub-steps",
+        json={"title": "L1", "description": "Black wire."})).json()
+    sub2 = (await client.post(f"/api/build-steps/{step['id']}/sub-steps",
+        json={"title": "L2"})).json()
+
+    cloned = (await client.post(f"/api/instruction-sets/{v1['id']}/clone",
+        json={"label": "v2", "activate": True})).json()
+    assert cloned["label"] == "v2"
+    assert cloned["is_active"] is True
+
+    # Source set steps untouched.
+    src_steps = (await client.get(
+        f"/api/build-steps?instruction_set_id={v1['id']}"
+    )).json()
+    assert len(src_steps) == 1
+
+    # Cloned set has its own step rows (different ids) with same content.
+    new_steps = (await client.get(
+        f"/api/build-steps?instruction_set_id={cloned['id']}"
+    )).json()
+    assert len(new_steps) == 1
+    assert new_steps[0]["title"] == "Land wires"
+    assert new_steps[0]["id"] != step["id"]
+
+    new_subs = (await client.get(
+        f"/api/build-steps/{new_steps[0]['id']}/sub-steps"
+    )).json()
+    assert [s["title"] for s in new_subs] == ["L1", "L2"]
+    assert new_subs[0]["description"] == "Black wire."
+
+
 # ── build steps ──────────────────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_create_and_list_steps(client, auth_user):
-    user, token = await auth_user("admin")
-    client.cookies.set("auth_token", token)
-
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2"})).json()
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    s = await _make_set(client, rev["id"])
 
     s1 = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"],
-        "stage_key": "Assembly",
-        "title": "Unbox parts",
-        "description": "Verify carton against BOM",
-        "required_photo_count": 0,
+        "instruction_set_id": s["id"], "title": "Unbox parts",
+        "description": "Verify carton against BOM", "required_photo_count": 0,
     })).json()
     s2 = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"],
-        "stage_key": "Assembly",
-        "title": "Mount enclosure",
+        "instruction_set_id": s["id"], "title": "Mount enclosure",
         "required_photo_count": 1,
     })).json()
 
-    listed = (await client.get(
-        f"/api/build-steps?product_revision_id={rev['id']}&stage_key=Assembly"
-    )).json()
-    assert [s["title"] for s in listed] == ["Unbox parts", "Mount enclosure"]
+    listed = (await client.get(f"/api/build-steps?instruction_set_id={s['id']}")).json()
+    assert [r["title"] for r in listed] == ["Unbox parts", "Mount enclosure"]
     assert listed[0]["sort_order"] == 0
-    assert listed[1]["sort_order"] == 1
     assert listed[1]["required_photo_count"] == 1
 
 
 @pytest.mark.asyncio
 async def test_patch_step_autosave_payload(client, auth_user):
-    user, token = await auth_user("admin")
-    client.cookies.set("auth_token", token)
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2"})).json()
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    s = await _make_set(client, rev["id"], stage_key="Firmware")
     step = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Firmware", "title": "Flash",
+        "instruction_set_id": s["id"], "title": "Flash",
     })).json()
 
     r = await client.patch(f"/api/build-steps/{step['id']}",
@@ -174,40 +243,34 @@ async def test_patch_step_autosave_payload(client, auth_user):
 
 @pytest.mark.asyncio
 async def test_reorder_steps(client, auth_user):
-    user, token = await auth_user("admin")
-    client.cookies.set("auth_token", token)
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2"})).json()
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    s = await _make_set(client, rev["id"])
     ids = []
     for title in ("A", "B", "C"):
-        s = (await client.post("/api/build-steps", json={
-            "product_revision_id": rev["id"], "stage_key": "Assembly", "title": title,
+        row = (await client.post("/api/build-steps", json={
+            "instruction_set_id": s["id"], "title": title,
         })).json()
-        ids.append(s["id"])
+        ids.append(row["id"])
 
-    # Reverse order
     r = await client.post("/api/build-steps/reorder", json={"ids": list(reversed(ids))})
     assert r.status_code == 200
     assert r.json()["reordered"] == 3
 
-    listed = (await client.get(
-        f"/api/build-steps?product_revision_id={rev['id']}&stage_key=Assembly"
-    )).json()
-    assert [s["title"] for s in listed] == ["C", "B", "A"]
+    listed = (await client.get(f"/api/build-steps?instruction_set_id={s['id']}")).json()
+    assert [row["title"] for row in listed] == ["C", "B", "A"]
 
 
 @pytest.mark.asyncio
 async def test_delete_step_cascades_status(client, auth_user, clean_db):
-    user, token = await auth_user("admin")
-    client.cookies.set("auth_token", token)
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
 
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2", "is_default": True})).json()
+    rev = await _make_revision(client)
+    s = await _make_set(client, rev["id"])
     step = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "X",
+        "instruction_set_id": s["id"], "title": "X",
     })).json()
 
-    # Create a device + toggle status, so we have a row to cascade away.
     async with clean_db.acquire() as conn:
         device_id = await conn.fetchval(
             """INSERT INTO inventory.devices (mac_address, product_type, hardware_revision)
@@ -235,26 +298,46 @@ async def test_delete_step_cascades_status(client, auth_user, clean_db):
         assert after == 0
 
 
+# ── sub-steps ────────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_sub_step_crud(client, auth_user):
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    s = await _make_set(client, rev["id"])
+    step = (await client.post("/api/build-steps", json={
+        "instruction_set_id": s["id"], "title": "Wire AC",
+    })).json()
+
+    sub = (await client.post(f"/api/build-steps/{step['id']}/sub-steps",
+        json={"title": "Land L1", "description": "Black wire."})).json()
+    assert sub["title"] == "Land L1"
+    assert sub["description"] == "Black wire."
+
+    listed = (await client.get(f"/api/build-steps/{step['id']}/sub-steps")).json()
+    assert len(listed) == 1
+
+    upd = (await client.patch(f"/api/build-sub-steps/{sub['id']}",
+        json={"description": "Black wire, 3.5 N·m"})).json()
+    assert upd["description"] == "Black wire, 3.5 N·m"
+
+    d = await client.delete(f"/api/build-sub-steps/{sub['id']}")
+    assert d.status_code == 200
+    assert (await client.get(f"/api/build-steps/{step['id']}/sub-steps")).json() == []
+
+
 # ── worker view ──────────────────────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_worker_view_resolves_revision_and_merges_status(client, auth_user, clean_db):
-    user, token = await auth_user("technician")
-    client.cookies.set("auth_token", token)
-
-    # Admin creates a revision + steps. Switch tokens for that.
-    admin, admin_tok = await auth_user("admin")
-    client.cookies.set("auth_token", admin_tok)
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2", "is_default": True})).json()
+async def test_worker_view_uses_active_set(client, auth_user, clean_db):
+    admin, admin_tok = await auth_user("admin"); client.cookies.set("auth_token", admin_tok)
+    rev = await _make_revision(client)
+    s_active = await _make_set(client, rev["id"], label="v1", is_active=True)
     s1 = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "Step one",
+        "instruction_set_id": s_active["id"], "title": "Step one",
     })).json()
     s2 = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "Step two",
-        "required_photo_count": 1,
+        "instruction_set_id": s_active["id"], "title": "Step two", "required_photo_count": 1,
     })).json()
 
-    # Create a device tagged hardware_revision='v2' so it resolves to our rev.
     async with clean_db.acquire() as conn:
         device_id = await conn.fetchval(
             """INSERT INTO inventory.devices (mac_address, product_type, hardware_revision)
@@ -262,59 +345,81 @@ async def test_worker_view_resolves_revision_and_merges_status(client, auth_user
             "AA:BB:CC:DD:EE:02", "EVSE", "v2",
         )
 
-    # Technician toggles step 1.
-    client.cookies.set("auth_token", token)
-    await client.post(f"/api/devices/{device_id}/build-steps/{s1['id']}/toggle",
-        json={"checked": True})
-
     body = (await client.get(f"/api/devices/{device_id}/stages/Assembly/build-steps")).json()
-    assert body["revision"]["id"] == rev["id"]
-    assert len(body["steps"]) == 2
-    assert body["steps"][0]["step"]["title"] == "Step one"
-    assert body["steps"][0]["status"]["checked"] is True
-    assert body["steps"][1]["status"]["checked"] is False
+    assert body["instruction_set"]["id"] == s_active["id"]
+    assert [s["step"]["title"] for s in body["steps"]] == ["Step one", "Step two"]
 
 
 @pytest.mark.asyncio
-async def test_worker_view_falls_back_to_default_revision(client, auth_user, clean_db):
-    admin, admin_tok = await auth_user("admin")
-    client.cookies.set("auth_token", admin_tok)
-    # Two revisions for EVSE — only v1 marked default. Device has hardware_revision='unknown'.
-    await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v1", "is_default": True})
-    rev2 = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2", "is_default": False})).json()
-    # Step on v2 only, just to confirm v1 (default) gets resolved and returns []
-    await client.post("/api/build-steps", json={
-        "product_revision_id": rev2["id"], "stage_key": "Assembly", "title": "v2-only",
-    })
+async def test_worker_view_pins_to_started_set_after_activation(client, auth_user, clean_db):
+    """Once a device has progress on a set, activating a new set must not
+    swap the worker's view out from under them."""
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    v1 = await _make_set(client, rev["id"], label="v1", is_active=True)
+    step_v1 = (await client.post("/api/build-steps", json={
+        "instruction_set_id": v1["id"], "title": "Step v1",
+    })).json()
 
     async with clean_db.acquire() as conn:
         device_id = await conn.fetchval(
             """INSERT INTO inventory.devices (mac_address, product_type, hardware_revision)
                VALUES ($1, $2, $3) RETURNING id""",
-            "AA:BB:CC:DD:EE:03", "EVSE", "unknown",
+            "AA:BB:CC:DD:EE:03", "EVSE", "v2",
         )
 
+    # Device touches v1 → pinned.
+    await client.post(f"/api/devices/{device_id}/build-steps/{step_v1['id']}/toggle",
+        json={"checked": True})
+
+    # Admin clones to v2 and activates.
+    v2 = (await client.post(f"/api/instruction-sets/{v1['id']}/clone",
+        json={"label": "v2", "activate": True})).json()
+
     body = (await client.get(f"/api/devices/{device_id}/stages/Assembly/build-steps")).json()
-    assert body["revision"]["label"] == "v1"
-    assert body["steps"] == []
+    # Even though v2 is now active, the device stays on v1 because it's
+    # already started progress there.
+    assert body["instruction_set"]["id"] == v1["id"]
+    assert body["instruction_set"]["label"] == "v1"
 
 
 @pytest.mark.asyncio
-async def test_toggle_writes_audit_log(client, auth_user, clean_db):
-    admin, admin_tok = await auth_user("admin")
-    client.cookies.set("auth_token", admin_tok)
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2", "is_default": True})).json()
+async def test_worker_view_returns_sub_steps_under_each_step(client, auth_user, clean_db):
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    s = await _make_set(client, rev["id"])
     step = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "S",
+        "instruction_set_id": s["id"], "title": "Wire AC",
     })).json()
+    await client.post(f"/api/build-steps/{step['id']}/sub-steps",
+        json={"title": "Land L1", "description": "Black wire."})
+    await client.post(f"/api/build-steps/{step['id']}/sub-steps",
+        json={"title": "Torque", "description": "3.5 N·m."})
+
     async with clean_db.acquire() as conn:
         device_id = await conn.fetchval(
             """INSERT INTO inventory.devices (mac_address, product_type, hardware_revision)
                VALUES ($1, $2, $3) RETURNING id""",
             "AA:BB:CC:DD:EE:04", "EVSE", "v2",
+        )
+
+    body = (await client.get(f"/api/devices/{device_id}/stages/Assembly/build-steps")).json()
+    assert [sub["title"] for sub in body["steps"][0]["sub_steps"]] == ["Land L1", "Torque"]
+
+
+@pytest.mark.asyncio
+async def test_toggle_writes_audit_log(client, auth_user, clean_db):
+    _, tok = await auth_user("admin"); client.cookies.set("auth_token", tok)
+    rev = await _make_revision(client)
+    s = await _make_set(client, rev["id"])
+    step = (await client.post("/api/build-steps", json={
+        "instruction_set_id": s["id"], "title": "S",
+    })).json()
+    async with clean_db.acquire() as conn:
+        device_id = await conn.fetchval(
+            """INSERT INTO inventory.devices (mac_address, product_type, hardware_revision)
+               VALUES ($1, $2, $3) RETURNING id""",
+            "AA:BB:CC:DD:EE:05", "EVSE", "v2",
         )
 
     r = await client.post(f"/api/devices/{device_id}/build-steps/{step['id']}/toggle",

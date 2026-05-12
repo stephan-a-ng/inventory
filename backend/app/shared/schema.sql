@@ -312,8 +312,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS firmware_versions_one_standard
 -- reference_photo_key holds a GCS object key when set (no-op in Phase A).
 CREATE TABLE IF NOT EXISTS build_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_revision_id UUID NOT NULL REFERENCES product_revisions(id) ON DELETE CASCADE,
-  stage_key TEXT NOT NULL CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration')),
+  product_revision_id UUID REFERENCES product_revisions(id) ON DELETE CASCADE,
+  stage_key TEXT CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration')),
   sort_order INTEGER NOT NULL DEFAULT 0,
   title TEXT NOT NULL,
   description TEXT,
@@ -322,8 +322,8 @@ CREATE TABLE IF NOT EXISTS build_steps (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_build_steps_rev_stage
-  ON build_steps(product_revision_id, stage_key, sort_order, created_at);
+-- (The old (product_revision_id, stage_key) index was replaced by
+-- idx_build_steps_set_order below, after instruction_set_id lands.)
 
 -- Per-device per-step state. Lazily created on first interaction.
 CREATE TABLE IF NOT EXISTS device_build_step_status (
@@ -366,3 +366,103 @@ CREATE TABLE IF NOT EXISTS device_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_device_notes_device_created
   ON device_notes(device_id, created_at DESC);
+
+-- ── Instruction sets + sub-steps ─────────────────────────────────────────────
+-- An instruction_set groups the build_steps authored for a particular
+-- (product_revision, stage_key). Admins iterate by creating a new set
+-- (typically "v2") and activating it; in-flight devices keep using the
+-- set they first interacted with (implicitly pinned through their
+-- existing device_build_step_status rows, which FK to build_step_id).
+CREATE TABLE IF NOT EXISTS instruction_sets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_revision_id UUID NOT NULL REFERENCES product_revisions(id) ON DELETE CASCADE,
+  stage_key TEXT NOT NULL CHECK (stage_key IN ('Assembly', 'Firmware', 'Calibration')),
+  label TEXT NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (product_revision_id, stage_key, label)
+);
+-- At most one active instruction set per (revision, stage).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_instruction_sets_one_active
+  ON instruction_sets(product_revision_id, stage_key) WHERE is_active = TRUE;
+
+-- Wire build_steps to an instruction_set. Existing rows keyed by
+-- (product_revision_id, stage_key) get a default "v1" set created for them
+-- and their FK back-filled.
+ALTER TABLE build_steps ADD COLUMN IF NOT EXISTS instruction_set_id UUID
+  REFERENCES instruction_sets(id) ON DELETE CASCADE;
+
+DO $$
+DECLARE
+    r RECORD;
+    new_set_id UUID;
+BEGIN
+    -- Only run when product_revision_id is still a column on build_steps
+    -- (i.e. pre-migration state).
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'inventory'
+          AND table_name = 'build_steps'
+          AND column_name = 'product_revision_id'
+    ) THEN
+        FOR r IN
+            EXECUTE 'SELECT DISTINCT product_revision_id, stage_key
+                     FROM build_steps
+                     WHERE product_revision_id IS NOT NULL AND instruction_set_id IS NULL'
+        LOOP
+            INSERT INTO instruction_sets (product_revision_id, stage_key, label, is_active)
+            VALUES (r.product_revision_id, r.stage_key, 'v1', TRUE)
+            ON CONFLICT (product_revision_id, stage_key, label) DO NOTHING;
+
+            SELECT id INTO new_set_id FROM instruction_sets
+            WHERE product_revision_id = r.product_revision_id
+              AND stage_key = r.stage_key
+              AND label = 'v1';
+
+            EXECUTE 'UPDATE build_steps
+                     SET instruction_set_id = $1
+                     WHERE product_revision_id = $2
+                       AND stage_key = $3
+                       AND instruction_set_id IS NULL'
+              USING new_set_id, r.product_revision_id, r.stage_key;
+        END LOOP;
+    END IF;
+END $$;
+
+-- Lock the FK in now that everything's backfilled.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'inventory'
+          AND table_name = 'build_steps'
+          AND column_name = 'instruction_set_id'
+          AND is_nullable = 'YES'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM build_steps WHERE instruction_set_id IS NULL
+    ) THEN
+        ALTER TABLE build_steps ALTER COLUMN instruction_set_id SET NOT NULL;
+    END IF;
+END $$;
+
+-- Drop the legacy denormalized columns once the FK is the source of truth.
+ALTER TABLE build_steps DROP COLUMN IF EXISTS product_revision_id;
+ALTER TABLE build_steps DROP COLUMN IF EXISTS stage_key;
+
+CREATE INDEX IF NOT EXISTS idx_build_steps_set_order
+  ON build_steps(instruction_set_id, sort_order, created_at);
+
+-- Sub-steps: ordered children under each build_step. No own photo fields
+-- (sub-step photos still attach to the parent build_step's quota).
+CREATE TABLE IF NOT EXISTS build_sub_steps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  build_step_id UUID NOT NULL REFERENCES build_steps(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  title TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_build_sub_steps_parent
+  ON build_sub_steps(build_step_id, sort_order, created_at);

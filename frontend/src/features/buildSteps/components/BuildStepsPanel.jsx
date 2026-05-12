@@ -3,10 +3,14 @@ import { Plus, Trash2, ArrowUp, ArrowDown, Camera, ImageOff } from 'lucide-react
 import { Input } from '@/shared/components/ui/input';
 import { ghostBtn, primaryBtn, dangerBtn } from '@/shared/lib/m5-styles';
 import RevisionPicker from './RevisionPicker';
+import InstructionSetPicker from './InstructionSetPicker';
 import SaveIndicator from './SaveIndicator';
 import ReferencePhotoSlot from './ReferencePhotoSlot';
+import SubStepEditor from './SubStepEditor';
 import { useAutoSave } from '../lib/useAutoSave';
 import {
+  listInstructionSets,
+  createInstructionSet,
   listBuildSteps,
   createBuildStep,
   updateBuildStep,
@@ -35,28 +39,74 @@ const stageTabStyle = (active) => ({
 export default function BuildStepsPanel() {
   const [revision, setRevision] = useState(null);
   const [stageKey, setStageKey] = useState('Assembly');
+  const [sets, setSets] = useState([]);
+  const [selectedSet, setSelectedSet] = useState(null);
   const [steps, setSteps] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState(null);
   const [hovered, setHovered] = useState(null);
 
-  const reload = useCallback(async () => {
-    if (!revision) { setSteps([]); return; }
+  const activeSet = useMemo(() => sets.find((s) => s.is_active) || null, [sets]);
+
+  // Load instruction sets whenever revision or stage changes.
+  const loadSets = useCallback(async () => {
+    if (!revision) {
+      setSets([]); setSelectedSet(null); setSteps([]);
+      return;
+    }
     setLoading(true); setError(null);
     try {
-      setSteps(await listBuildSteps(revision.id, stageKey));
+      const rows = await listInstructionSets(revision.id, stageKey);
+      setSets(rows);
+      // Default selection: active set, else first, else null.
+      const nextActive = rows.find((s) => s.is_active) || rows[0] || null;
+      setSelectedSet((prev) => {
+        if (prev && rows.some((r) => r.id === prev.id)) {
+          // Keep current selection if it still exists.
+          return rows.find((r) => r.id === prev.id);
+        }
+        return nextActive;
+      });
     } catch (e) { setError(e); } finally { setLoading(false); }
   }, [revision, stageKey]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { loadSets(); }, [loadSets]);
+
+  // Load steps for the selected set.
+  const loadSteps = useCallback(async () => {
+    if (!selectedSet) { setSteps([]); return; }
+    setLoading(true); setError(null);
+    try {
+      setSteps(await listBuildSteps(selectedSet.id));
+    } catch (e) { setError(e); } finally { setLoading(false); }
+  }, [selectedSet]);
+
+  useEffect(() => { loadSteps(); }, [loadSteps]);
+
+  async function ensureSet() {
+    // For users who haven't created any instruction set yet, create v1 active
+    // so the first "Add step" works without a separate setup step.
+    if (selectedSet) return selectedSet;
+    if (!revision) return null;
+    const created = await createInstructionSet({
+      product_revision_id: revision.id,
+      stage_key: stageKey,
+      label: 'v1',
+      is_active: true,
+    });
+    setSets((prev) => [...prev, created]);
+    setSelectedSet(created);
+    return created;
+  }
 
   async function handleAdd() {
     if (!revision || !newTitle.trim()) return;
     try {
+      const targetSet = await ensureSet();
+      if (!targetSet) return;
       const created = await createBuildStep({
-        product_revision_id: revision.id,
-        stage_key: stageKey,
+        instruction_set_id: targetSet.id,
         title: newTitle.trim(),
         required_photo_count: 0,
       });
@@ -80,28 +130,26 @@ export default function BuildStepsPanel() {
     if (target < 0 || target >= ids.length) return;
     [ids[idx], ids[target]] = [ids[target], ids[idx]];
     try {
-      // Optimistic
       setSteps((prev) => {
         const next = [...prev];
         [next[idx], next[target]] = [next[target], next[idx]];
         return next.map((s, i) => ({ ...s, sort_order: i }));
       });
       await reorderBuildSteps(ids);
-    } catch (e) {
-      setError(e);
-      reload();
-    }
+    } catch (e) { setError(e); loadSteps(); }
   }
 
+  const isReadOnly = !!selectedSet && selectedSet.id !== activeSet?.id;
+
   return (
-    <div style={{ maxWidth: 820 }}>
+    <div style={{ maxWidth: 880 }}>
       <div style={{ marginBottom: 24 }}>
         <RevisionPicker value={revision} onChange={setRevision} />
       </div>
 
       {revision && (
         <>
-          <div style={{ display: 'flex', marginBottom: 0 }}>
+          <div style={{ display: 'flex', marginBottom: 12 }}>
             {STAGE_KEYS.map((s) => (
               <button
                 key={s}
@@ -113,14 +161,42 @@ export default function BuildStepsPanel() {
             ))}
           </div>
 
-          <div style={{ border: '1px solid var(--m5-rule)', borderTop: 'none', background: 'var(--m5-cream)' }}>
+          <InstructionSetPicker
+            revisionId={revision.id}
+            stageKey={stageKey}
+            sets={sets}
+            activeSet={activeSet}
+            selectedSet={selectedSet}
+            onSelect={setSelectedSet}
+            onChanged={loadSets}
+          />
+
+          {selectedSet && !selectedSet.is_active && (
+            <div style={{
+              marginBottom: 12,
+              padding: '8px 12px',
+              border: '1px dashed var(--m5-rule)',
+              background: 'var(--m5-cream-deep)',
+              fontFamily: 'var(--m5-font-mono)',
+              fontSize: 11,
+              letterSpacing: '0.04em',
+              color: 'var(--m5-muted)',
+            }}>
+              You're viewing {selectedSet.label} — it's not the active version.
+              Edits land on this version; in-flight devices stay on whichever
+              version they started.
+            </div>
+          )}
+
+          <div style={{ border: '1px solid var(--m5-rule)', background: 'var(--m5-cream)' }}>
             {loading ? (
               <div style={{ padding: '20px 16px', color: 'var(--m5-muted)', fontFamily: 'var(--m5-font-mono)', fontSize: 12 }}>
                 Loading…
               </div>
             ) : steps.length === 0 ? (
               <div style={{ padding: '20px 16px', color: 'var(--m5-muted)', fontFamily: 'var(--m5-font-mono)', fontSize: 12 }}>
-                No {stageKey.toLowerCase()} steps yet. Add the first one below.
+                No {stageKey.toLowerCase()} steps yet in {selectedSet?.label || 'this version'}.
+                Add the first one below.
               </div>
             ) : (
               steps.map((step, idx) => (
@@ -142,8 +218,8 @@ export default function BuildStepsPanel() {
               <Input
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                placeholder={`New ${stageKey.toLowerCase()} step…`}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                placeholder={`New ${stageKey.toLowerCase()} step${selectedSet ? ` in ${selectedSet.label}` : ''}…`}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
                 style={{ borderRadius: 0, flex: 1 }}
               />
               <button
@@ -186,7 +262,6 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
     required_photo_count: step.required_photo_count,
   });
 
-  // Re-sync local draft when the upstream step row changes (e.g. after reorder).
   useEffect(() => {
     setDraft({
       title: step.title,
@@ -222,6 +297,7 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
         padding: '14px 16px',
         borderBottom: '1px solid var(--m5-rule)',
         alignItems: 'flex-start',
+        rowGap: 10,
       }}
     >
       <div style={{
@@ -239,7 +315,6 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
         }}>{String(index + 1).padStart(2, '0')}</span>
         <button
           aria-label="Move up"
-          title="Move up"
           disabled={index === 0}
           style={{
             ...ghostBtn(hovered, `up-${step.id}`),
@@ -254,7 +329,6 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
         </button>
         <button
           aria-label="Move down"
-          title="Move down"
           disabled={index === total - 1}
           style={{
             ...ghostBtn(hovered, `down-${step.id}`),
@@ -309,7 +383,6 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
             onMouseLeave={() => setHovered(null)}
             onClick={onDelete}
             aria-label="Delete step"
-            title="Delete step"
           >
             <Trash2 size={13} />
           </button>
@@ -354,6 +427,8 @@ function BuildStepRow({ step, index, total, hovered, setHovered, onMove, onDelet
           {photoCountLabel}
         </span>
       </div>
+
+      <SubStepEditor stepId={step.id} hovered={hovered} setHovered={setHovered} />
     </div>
   );
 }

@@ -9,7 +9,6 @@ asserts:
 """
 from __future__ import annotations
 
-import io
 import os
 
 import pytest
@@ -33,15 +32,24 @@ pytestmark = [
 ]
 
 
+async def _make_revision_and_set(client, *, is_default: bool = True) -> tuple[dict, dict]:
+    rev = (await client.post("/api/product-revisions",
+        json={"product_type": "EVSE", "label": "v2", "is_default": is_default})).json()
+    s = (await client.post("/api/instruction-sets", json={
+        "product_revision_id": rev["id"], "stage_key": "Assembly",
+        "label": "v1", "is_active": True,
+    })).json()
+    return rev, s
+
+
 @pytest.mark.asyncio
 async def test_upload_reference_photo_round_trips(client, auth_user):
     user, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
 
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2"})).json()
+    _, s = await _make_revision_and_set(client)
     step = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "Test step",
+        "instruction_set_id": s["id"], "title": "Test step",
     })).json()
 
     files = {"file": ("ref.png", PNG_1X1, "image/png")}
@@ -56,12 +64,10 @@ async def test_upload_reference_photo_round_trips(client, auth_user):
 async def test_upload_rejects_oversize(client, auth_user):
     user, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2"})).json()
+    _, s = await _make_revision_and_set(client)
     step = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "X",
+        "instruction_set_id": s["id"], "title": "X",
     })).json()
-    # 5 MiB blob — should 413.
     blob = PNG_1X1 + b"\x00" * (5 * 1024 * 1024)
     files = {"file": ("huge.png", blob, "image/png")}
     r = await client.post(f"/api/build-steps/{step['id']}/reference-photo", files=files)
@@ -72,12 +78,11 @@ async def test_upload_rejects_oversize(client, auth_user):
 async def test_upload_rejects_non_image(client, auth_user):
     user, token = await auth_user("admin")
     client.cookies.set("auth_token", token)
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2"})).json()
+    _, s = await _make_revision_and_set(client)
     step = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "X",
+        "instruction_set_id": s["id"], "title": "X",
     })).json()
-    files = {"file": ("notes.txt", b"hello", "image/jpeg")}  # lies about mime
+    files = {"file": ("notes.txt", b"hello", "image/jpeg")}
     r = await client.post(f"/api/build-steps/{step['id']}/reference-photo", files=files)
     assert r.status_code == 415
 
@@ -86,11 +91,9 @@ async def test_upload_rejects_non_image(client, auth_user):
 async def test_worker_photo_upload_lists_in_view(client, auth_user, clean_db):
     admin, admin_tok = await auth_user("admin")
     client.cookies.set("auth_token", admin_tok)
-    rev = (await client.post("/api/product-revisions",
-        json={"product_type": "EVSE", "label": "v2", "is_default": True})).json()
+    _, s = await _make_revision_and_set(client)
     step = (await client.post("/api/build-steps", json={
-        "product_revision_id": rev["id"], "stage_key": "Assembly", "title": "S",
-        "required_photo_count": 1,
+        "instruction_set_id": s["id"], "title": "S", "required_photo_count": 1,
     })).json()
     async with clean_db.acquire() as conn:
         device_id = await conn.fetchval(

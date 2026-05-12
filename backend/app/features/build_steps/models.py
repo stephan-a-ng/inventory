@@ -64,10 +64,36 @@ class FirmwareVersionOut(BaseModel):
     updated_at: datetime
 
 
-# ── build_steps ──────────────────────────────────────────────────────────────
-class BuildStepCreate(BaseModel):
+# ── instruction sets ─────────────────────────────────────────────────────────
+class InstructionSetCreate(BaseModel):
     product_revision_id: UUID
     stage_key: StageKey
+    label: str = Field(min_length=1, max_length=64)
+    is_active: bool = False
+
+
+class InstructionSetUpdate(BaseModel):
+    label: Optional[str] = Field(default=None, min_length=1, max_length=64)
+
+
+class InstructionSetClone(BaseModel):
+    label: str = Field(min_length=1, max_length=64)
+    activate: bool = True
+
+
+class InstructionSetOut(BaseModel):
+    id: UUID
+    product_revision_id: UUID
+    stage_key: StageKey
+    label: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── build_steps ──────────────────────────────────────────────────────────────
+class BuildStepCreate(BaseModel):
+    instruction_set_id: UUID
     title: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
     required_photo_count: int = Field(default=0, ge=0, le=10)
@@ -86,13 +112,38 @@ class BuildStepReorder(BaseModel):
 
 class BuildStepOut(BaseModel):
     id: UUID
-    product_revision_id: UUID
-    stage_key: StageKey
+    instruction_set_id: UUID
     sort_order: int
     title: str
     description: Optional[str] = None
     reference_photo_key: Optional[str] = None
     required_photo_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── build_sub_steps ──────────────────────────────────────────────────────────
+class BuildSubStepCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: Optional[str] = None
+
+
+class BuildSubStepUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class BuildSubStepReorder(BaseModel):
+    ids: list[UUID]
+
+
+class BuildSubStepOut(BaseModel):
+    id: UUID
+    build_step_id: UUID
+    sort_order: int
+    title: str
+    description: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -18,16 +18,24 @@ from .models import (
     BuildStepCreate,
     BuildStepReorder,
     BuildStepUpdate,
+    BuildSubStepCreate,
+    BuildSubStepReorder,
+    BuildSubStepUpdate,
     FirmwareVersionCreate,
     FirmwareVersionUpdate,
+    InstructionSetClone,
+    InstructionSetCreate,
+    InstructionSetUpdate,
     ProductRevisionCreate,
     ProductRevisionUpdate,
     StepStatusToggle,
 )
 from .services import (
     BuildStepService,
+    BuildSubStepService,
     DeviceProgressService,
     FirmwareVersionService,
+    InstructionSetService,
     ProductRevisionService,
 )
 
@@ -63,14 +71,37 @@ def _ser_firmware(f: dict) -> dict:
 def _ser_step(s: dict, *, with_signed_reference: bool = False) -> dict:
     return {
         "id": str(s["id"]),
-        "product_revision_id": str(s["product_revision_id"]),
-        "stage_key": s["stage_key"],
+        "instruction_set_id": str(s["instruction_set_id"]),
         "sort_order": s["sort_order"],
         "title": s["title"],
         "description": s.get("description"),
         "reference_photo_key": s.get("reference_photo_key"),
         "reference_photo_url": _maybe_sign(s.get("reference_photo_key")) if with_signed_reference else None,
         "required_photo_count": s["required_photo_count"],
+        "created_at": s["created_at"].isoformat(),
+        "updated_at": s["updated_at"].isoformat(),
+    }
+
+
+def _ser_set(r: dict) -> dict:
+    return {
+        "id": str(r["id"]),
+        "product_revision_id": str(r["product_revision_id"]),
+        "stage_key": r["stage_key"],
+        "label": r["label"],
+        "is_active": r["is_active"],
+        "created_at": r["created_at"].isoformat(),
+        "updated_at": r["updated_at"].isoformat(),
+    }
+
+
+def _ser_sub_step(s: dict) -> dict:
+    return {
+        "id": str(s["id"]),
+        "build_step_id": str(s["build_step_id"]),
+        "sort_order": s["sort_order"],
+        "title": s["title"],
+        "description": s.get("description"),
         "created_at": s["created_at"].isoformat(),
         "updated_at": s["updated_at"].isoformat(),
     }
@@ -239,16 +270,104 @@ async def delete_firmware(
     return {"status": "deleted"}
 
 
+# ── instruction sets ─────────────────────────────────────────────────────────
+@router.get("/api/instruction-sets")
+async def list_instruction_sets(
+    product_revision_id: UUID = Query(...),
+    stage_key: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    if stage_key and stage_key not in {"Assembly", "Firmware", "Calibration"}:
+        raise HTTPException(status_code=400, detail="Invalid stage_key")
+    rows = await InstructionSetService.list_for(product_revision_id, stage_key)
+    return [_ser_set(r) for r in rows]
+
+
+@router.post("/api/instruction-sets")
+async def create_instruction_set(
+    body: InstructionSetCreate,
+    user: dict = Depends(require_role("admin")),
+):
+    if not await ProductRevisionService.get(body.product_revision_id):
+        raise HTTPException(status_code=404, detail="Revision not found")
+    try:
+        created = await InstructionSetService.create(
+            body.product_revision_id, body.stage_key, body.label, body.is_active,
+        )
+    except Exception as e:
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Instruction set label already exists for this stage")
+        raise
+    return _ser_set(created)
+
+
+@router.post("/api/instruction-sets/{set_id}/clone")
+async def clone_instruction_set(
+    set_id: UUID,
+    body: InstructionSetClone,
+    user: dict = Depends(require_role("admin")),
+):
+    try:
+        created = await InstructionSetService.clone(set_id, body.label, activate=body.activate)
+    except Exception as e:
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Instruction set label already exists for this stage")
+        raise
+    if not created:
+        raise HTTPException(status_code=404, detail="Source set not found")
+    return _ser_set(created)
+
+
+@router.post("/api/instruction-sets/{set_id}/activate")
+async def activate_instruction_set(
+    set_id: UUID,
+    user: dict = Depends(require_role("admin")),
+):
+    updated = await InstructionSetService.activate(set_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Set not found")
+    return _ser_set(updated)
+
+
+@router.patch("/api/instruction-sets/{set_id}")
+async def update_instruction_set(
+    set_id: UUID,
+    body: InstructionSetUpdate,
+    user: dict = Depends(require_role("admin")),
+):
+    if body.label is None:
+        existing = await InstructionSetService.get(set_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Set not found")
+        return _ser_set(existing)
+    try:
+        updated = await InstructionSetService.update_label(set_id, body.label)
+    except Exception as e:
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Instruction set label already exists for this stage")
+        raise
+    if not updated:
+        raise HTTPException(status_code=404, detail="Set not found")
+    return _ser_set(updated)
+
+
+@router.delete("/api/instruction-sets/{set_id}")
+async def delete_instruction_set(
+    set_id: UUID,
+    user: dict = Depends(require_role("admin")),
+):
+    if not await InstructionSetService.delete(set_id):
+        raise HTTPException(status_code=404, detail="Set not found")
+    return {"status": "deleted"}
+
+
 # ── build steps ──────────────────────────────────────────────────────────────
 @router.get("/api/build-steps")
 async def list_steps(
-    product_revision_id: UUID = Query(...),
-    stage_key: str = Query(...),
+    instruction_set_id: UUID = Query(...),
     user: dict = Depends(get_current_user),
 ):
-    if stage_key not in {"Assembly", "Firmware", "Calibration"}:
-        raise HTTPException(status_code=400, detail="Invalid stage_key")
-    rows = await BuildStepService.list_for(product_revision_id, stage_key)
+    rows = await BuildStepService.list_for_set(instruction_set_id)
     return [_ser_step(s) for s in rows]
 
 
@@ -257,10 +376,10 @@ async def create_step(
     body: BuildStepCreate,
     user: dict = Depends(require_role("admin")),
 ):
-    if not await ProductRevisionService.get(body.product_revision_id):
-        raise HTTPException(status_code=404, detail="Revision not found")
+    if not await InstructionSetService.get(body.instruction_set_id):
+        raise HTTPException(status_code=404, detail="Instruction set not found")
     created = await BuildStepService.create(
-        body.product_revision_id, body.stage_key, body.title, body.description, body.required_photo_count,
+        body.instruction_set_id, body.title, body.description, body.required_photo_count,
     )
     return _ser_step(created)
 
@@ -298,6 +417,56 @@ async def delete_step(
     return {"status": "deleted"}
 
 
+# ── sub-steps ────────────────────────────────────────────────────────────────
+@router.get("/api/build-steps/{step_id}/sub-steps")
+async def list_sub_steps(step_id: UUID, user: dict = Depends(get_current_user)):
+    rows = await BuildSubStepService.list_for(step_id)
+    return [_ser_sub_step(s) for s in rows]
+
+
+@router.post("/api/build-steps/{step_id}/sub-steps")
+async def create_sub_step(
+    step_id: UUID,
+    body: BuildSubStepCreate,
+    user: dict = Depends(require_role("admin")),
+):
+    if not await BuildStepService.get(step_id):
+        raise HTTPException(status_code=404, detail="Step not found")
+    created = await BuildSubStepService.create(step_id, body.title, body.description)
+    return _ser_sub_step(created)
+
+
+@router.patch("/api/build-sub-steps/{sub_id}")
+async def update_sub_step(
+    sub_id: UUID,
+    body: BuildSubStepUpdate,
+    user: dict = Depends(require_role("admin")),
+):
+    updated = await BuildSubStepService.update(sub_id, body.title, body.description, body.sort_order)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Sub-step not found")
+    return _ser_sub_step(updated)
+
+
+@router.post("/api/build-sub-steps/reorder")
+async def reorder_sub_steps(
+    body: BuildSubStepReorder,
+    user: dict = Depends(require_role("admin")),
+):
+    count = await BuildSubStepService.reorder(body.ids)
+    return {"reordered": count}
+
+
+@router.delete("/api/build-sub-steps/{sub_id}")
+async def delete_sub_step(
+    sub_id: UUID,
+    user: dict = Depends(require_role("admin")),
+):
+    if not await BuildSubStepService.delete(sub_id):
+        raise HTTPException(status_code=404, detail="Sub-step not found")
+    return {"status": "deleted"}
+
+
 # ── worker walkthrough ───────────────────────────────────────────────────────
 @router.get("/api/devices/{device_id}/stages/{stage_key}/build-steps")
 async def worker_view(
@@ -317,16 +486,31 @@ async def worker_view(
     )
     if not revision:
         # No default revision seeded for this product type yet — return empty.
-        return {"device_id": str(device_id), "stage_key": stage_key, "revision": None, "steps": []}
+        return {
+            "device_id": str(device_id), "stage_key": stage_key,
+            "revision": None, "instruction_set": None, "steps": [],
+        }
 
-    merged = await DeviceProgressService.get_worker_view(device_id, stage_key, revision["id"])
+    pinned_set = await DeviceProgressService.resolve_pinned_set(
+        device_id, revision["id"], stage_key,
+    )
+    if not pinned_set:
+        return {
+            "device_id": str(device_id), "stage_key": stage_key,
+            "revision": _ser_revision(revision),
+            "instruction_set": None, "steps": [],
+        }
+
+    merged = await DeviceProgressService.get_worker_view(device_id, pinned_set["id"])
     return {
         "device_id": str(device_id),
         "stage_key": stage_key,
         "revision": _ser_revision(revision),
+        "instruction_set": _ser_set(pinned_set),
         "steps": [
             {
                 "step": _ser_step(item["step"], with_signed_reference=True),
+                "sub_steps": [_ser_sub_step(s) for s in item.get("sub_steps", [])],
                 "status": _ser_status(item["status"]),
                 "photos": [_ser_photo(p, signed_url=_maybe_sign(p["photo_key"])) for p in item["photos"]],
             }

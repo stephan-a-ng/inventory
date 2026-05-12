@@ -178,6 +178,69 @@ export default function BuildStepRunner() {
                 </aside>
 
                 <div className="sr-checks">
+                  {/* Ordered sub-steps (read-only instructions) */}
+                  {current.sub_steps && current.sub_steps.length > 0 && (
+                    <div className="sr-check">
+                      <div className="row">
+                        <span className="toggle" aria-hidden="true" style={{
+                          background: 'var(--m5-cream-deep)', border: '1.5px solid var(--m5-rule)',
+                        }} />
+                        <div>
+                          <div className="lbl">Follow these steps in order</div>
+                          <div className="sub">
+                            {current.sub_steps.length} sub-step{current.sub_steps.length === 1 ? '' : 's'}
+                          </div>
+                        </div>
+                        <span className="req">Instructions</span>
+                      </div>
+                      <div className="input-area">
+                        <ol style={{
+                          listStyle: 'none', counterReset: 'sub', padding: 0, margin: 0,
+                          display: 'flex', flexDirection: 'column', gap: 10,
+                        }}>
+                          {current.sub_steps.map((sub) => (
+                            <li
+                              key={sub.id}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '28px 1fr',
+                                gap: 10,
+                                padding: '6px 0',
+                                borderBottom: '1px solid var(--m5-rule)',
+                                counterIncrement: 'sub',
+                              }}
+                            >
+                              <span style={{
+                                fontFamily: 'var(--m5-font-mono)',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: 'var(--m5-muted)',
+                                paddingTop: 3,
+                              }}>{String(sub.sort_order + 1).padStart(2, '0')}</span>
+                              <div>
+                                <div style={{
+                                  fontSize: 14,
+                                  fontWeight: 700,
+                                  letterSpacing: '-0.005em',
+                                  lineHeight: 1.3,
+                                }}>{sub.title}</div>
+                                {sub.description && (
+                                  <div style={{
+                                    fontSize: 13,
+                                    color: 'var(--m5-ink-soft)',
+                                    lineHeight: 1.45,
+                                    marginTop: 4,
+                                    whiteSpace: 'pre-wrap',
+                                  }}>{sub.description}</div>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Checkbox card */}
                   <div className={`sr-check ${current.status.checked ? 'checked' : ''}`}>
                     <div className="row">

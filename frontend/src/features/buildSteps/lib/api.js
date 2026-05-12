@@ -57,9 +57,28 @@ export const setFirmwareStandard = (id) =>
 export const deleteFirmware = (id) =>
   call(`/api/firmware-versions/${id}`, { method: 'DELETE' });
 
+// ── instruction sets ───────────────────────────────────────────────────────
+export const listInstructionSets = (revisionId, stageKey) =>
+  call(`/api/instruction-sets?product_revision_id=${revisionId}${stageKey ? `&stage_key=${stageKey}` : ''}`);
+
+export const createInstructionSet = (data) =>
+  call('/api/instruction-sets', jsonInit('POST', data));
+
+export const cloneInstructionSet = (setId, label, activate = true) =>
+  call(`/api/instruction-sets/${setId}/clone`, jsonInit('POST', { label, activate }));
+
+export const activateInstructionSet = (setId) =>
+  call(`/api/instruction-sets/${setId}/activate`, { method: 'POST' });
+
+export const updateInstructionSet = (setId, patch) =>
+  call(`/api/instruction-sets/${setId}`, jsonInit('PATCH', patch));
+
+export const deleteInstructionSet = (setId) =>
+  call(`/api/instruction-sets/${setId}`, { method: 'DELETE' });
+
 // ── build steps ────────────────────────────────────────────────────────────
-export const listBuildSteps = (revisionId, stageKey) =>
-  call(`/api/build-steps?product_revision_id=${revisionId}&stage_key=${stageKey}`);
+export const listBuildSteps = (instructionSetId) =>
+  call(`/api/build-steps?instruction_set_id=${instructionSetId}`);
 
 export const createBuildStep = (data) =>
   call('/api/build-steps', jsonInit('POST', data));
@@ -72,6 +91,22 @@ export const deleteBuildStep = (id) =>
 
 export const reorderBuildSteps = (ids) =>
   call('/api/build-steps/reorder', jsonInit('POST', { ids }));
+
+// ── sub-steps ──────────────────────────────────────────────────────────────
+export const listSubSteps = (stepId) =>
+  call(`/api/build-steps/${stepId}/sub-steps`);
+
+export const createSubStep = (stepId, data) =>
+  call(`/api/build-steps/${stepId}/sub-steps`, jsonInit('POST', data));
+
+export const updateSubStep = (subId, patch) =>
+  call(`/api/build-sub-steps/${subId}`, jsonInit('PATCH', patch));
+
+export const deleteSubStep = (subId) =>
+  call(`/api/build-sub-steps/${subId}`, { method: 'DELETE' });
+
+export const reorderSubSteps = (ids) =>
+  call('/api/build-sub-steps/reorder', jsonInit('POST', { ids }));
 
 // ── worker view + actions ──────────────────────────────────────────────────
 export const getWorkerView = (deviceId, stageKey) =>

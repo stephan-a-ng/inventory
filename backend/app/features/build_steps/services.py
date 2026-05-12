@@ -203,14 +203,173 @@ class FirmwareVersionService:
         return result == "DELETE 1"
 
 
+class InstructionSetService:
+    """Versioned authoring container — one set per (revision, stage_key) is
+    active at a time. Admins create new sets to iterate instructions; devices
+    stay pinned to whichever set they first interacted with."""
+
+    @staticmethod
+    async def list_for(revision_id: UUID, stage_key: Optional[str] = None) -> list[dict]:
+        if stage_key:
+            rows = await DatabasePool.fetch(
+                """SELECT * FROM instruction_sets
+                   WHERE product_revision_id = $1 AND stage_key = $2
+                   ORDER BY is_active DESC, created_at DESC""",
+                revision_id, stage_key,
+            )
+        else:
+            rows = await DatabasePool.fetch(
+                """SELECT * FROM instruction_sets
+                   WHERE product_revision_id = $1
+                   ORDER BY stage_key ASC, is_active DESC, created_at DESC""",
+                revision_id,
+            )
+        return [dict(r) for r in rows]
+
+    @staticmethod
+    async def get(set_id: UUID) -> Optional[dict]:
+        row = await DatabasePool.fetchrow(
+            "SELECT * FROM instruction_sets WHERE id = $1", set_id
+        )
+        return dict(row) if row else None
+
+    @staticmethod
+    async def get_active(revision_id: UUID, stage_key: str) -> Optional[dict]:
+        row = await DatabasePool.fetchrow(
+            """SELECT * FROM instruction_sets
+               WHERE product_revision_id = $1 AND stage_key = $2 AND is_active = TRUE
+               LIMIT 1""",
+            revision_id, stage_key,
+        )
+        return dict(row) if row else None
+
+    @staticmethod
+    async def get_or_create_default(revision_id: UUID, stage_key: str) -> dict:
+        """Lazy: returns the active set if there is one, else creates "v1" and
+        marks it active. Lets `POST /build-steps` work without a prior
+        explicit set-creation step."""
+        existing = await InstructionSetService.get_active(revision_id, stage_key)
+        if existing:
+            return existing
+        return await InstructionSetService.create(
+            revision_id, stage_key, label="v1", is_active=True,
+        )
+
+    @staticmethod
+    async def create(
+        revision_id: UUID, stage_key: str, label: str, is_active: bool,
+    ) -> dict:
+        async with DatabasePool._pool.acquire() as conn:  # noqa: SLF001
+            async with conn.transaction():
+                if is_active:
+                    await conn.execute(
+                        """UPDATE instruction_sets SET is_active = FALSE
+                           WHERE product_revision_id = $1 AND stage_key = $2""",
+                        revision_id, stage_key,
+                    )
+                row = await conn.fetchrow(
+                    """INSERT INTO instruction_sets
+                         (product_revision_id, stage_key, label, is_active)
+                       VALUES ($1, $2, $3, $4) RETURNING *""",
+                    revision_id, stage_key, label, is_active,
+                )
+        return dict(row)
+
+    @staticmethod
+    async def clone(source_set_id: UUID, label: str, *, activate: bool) -> Optional[dict]:
+        """Deep-copy the source set's steps + sub-steps into a new set with the
+        given label. Returns the new set row."""
+        src = await InstructionSetService.get(source_set_id)
+        if not src:
+            return None
+        async with DatabasePool._pool.acquire() as conn:  # noqa: SLF001
+            async with conn.transaction():
+                if activate:
+                    await conn.execute(
+                        """UPDATE instruction_sets SET is_active = FALSE
+                           WHERE product_revision_id = $1 AND stage_key = $2""",
+                        src["product_revision_id"], src["stage_key"],
+                    )
+                new_row = await conn.fetchrow(
+                    """INSERT INTO instruction_sets
+                         (product_revision_id, stage_key, label, is_active)
+                       VALUES ($1, $2, $3, $4) RETURNING *""",
+                    src["product_revision_id"], src["stage_key"], label, activate,
+                )
+                src_steps = await conn.fetch(
+                    """SELECT * FROM build_steps
+                       WHERE instruction_set_id = $1
+                       ORDER BY sort_order ASC, created_at ASC""",
+                    source_set_id,
+                )
+                for s in src_steps:
+                    new_step_id = await conn.fetchval(
+                        """INSERT INTO build_steps
+                             (instruction_set_id, sort_order, title, description,
+                              reference_photo_key, required_photo_count)
+                           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id""",
+                        new_row["id"], s["sort_order"], s["title"], s["description"],
+                        s["reference_photo_key"], s["required_photo_count"],
+                    )
+                    src_subs = await conn.fetch(
+                        """SELECT * FROM build_sub_steps
+                           WHERE build_step_id = $1
+                           ORDER BY sort_order ASC, created_at ASC""",
+                        s["id"],
+                    )
+                    for sub in src_subs:
+                        await conn.execute(
+                            """INSERT INTO build_sub_steps
+                                 (build_step_id, sort_order, title, description)
+                               VALUES ($1, $2, $3, $4)""",
+                            new_step_id, sub["sort_order"], sub["title"], sub["description"],
+                        )
+        return dict(new_row)
+
+    @staticmethod
+    async def activate(set_id: UUID) -> Optional[dict]:
+        existing = await InstructionSetService.get(set_id)
+        if not existing:
+            return None
+        async with DatabasePool._pool.acquire() as conn:  # noqa: SLF001
+            async with conn.transaction():
+                await conn.execute(
+                    """UPDATE instruction_sets SET is_active = FALSE
+                       WHERE product_revision_id = $1 AND stage_key = $2""",
+                    existing["product_revision_id"], existing["stage_key"],
+                )
+                row = await conn.fetchrow(
+                    """UPDATE instruction_sets SET is_active = TRUE, updated_at = now()
+                       WHERE id = $1 RETURNING *""",
+                    set_id,
+                )
+        return dict(row) if row else None
+
+    @staticmethod
+    async def update_label(set_id: UUID, label: str) -> Optional[dict]:
+        row = await DatabasePool.fetchrow(
+            """UPDATE instruction_sets SET label = $1, updated_at = now()
+               WHERE id = $2 RETURNING *""",
+            label, set_id,
+        )
+        return dict(row) if row else None
+
+    @staticmethod
+    async def delete(set_id: UUID) -> bool:
+        result = await DatabasePool.execute(
+            "DELETE FROM instruction_sets WHERE id = $1", set_id
+        )
+        return result == "DELETE 1"
+
+
 class BuildStepService:
     @staticmethod
-    async def list_for(revision_id: UUID, stage_key: str) -> list[dict]:
+    async def list_for_set(set_id: UUID) -> list[dict]:
         rows = await DatabasePool.fetch(
             """SELECT * FROM build_steps
-               WHERE product_revision_id = $1 AND stage_key = $2
+               WHERE instruction_set_id = $1
                ORDER BY sort_order ASC, created_at ASC""",
-            revision_id, stage_key,
+            set_id,
         )
         return [dict(r) for r in rows]
 
@@ -223,23 +382,22 @@ class BuildStepService:
 
     @staticmethod
     async def create(
-        revision_id: UUID,
-        stage_key: str,
+        instruction_set_id: UUID,
         title: str,
         description: Optional[str],
         required_photo_count: int,
     ) -> dict:
-        # New step appends to the end of its (revision, stage) list.
+        # New step appends to the end of its instruction set's list.
         next_order = await DatabasePool.fetchval(
             """SELECT COALESCE(MAX(sort_order), -1) + 1 FROM build_steps
-               WHERE product_revision_id = $1 AND stage_key = $2""",
-            revision_id, stage_key,
+               WHERE instruction_set_id = $1""",
+            instruction_set_id,
         )
         row = await DatabasePool.fetchrow(
             """INSERT INTO build_steps
-                 (product_revision_id, stage_key, sort_order, title, description, required_photo_count)
-               VALUES ($1, $2, $3, $4, $5, $6) RETURNING *""",
-            revision_id, stage_key, next_order, title, description, required_photo_count,
+                 (instruction_set_id, sort_order, title, description, required_photo_count)
+               VALUES ($1, $2, $3, $4, $5) RETURNING *""",
+            instruction_set_id, next_order, title, description, required_photo_count,
         )
         return dict(row)
 
@@ -306,14 +464,135 @@ class BuildStepService:
         return result == "DELETE 1"
 
 
+class BuildSubStepService:
+    @staticmethod
+    async def list_for(step_id: UUID) -> list[dict]:
+        rows = await DatabasePool.fetch(
+            """SELECT * FROM build_sub_steps
+               WHERE build_step_id = $1
+               ORDER BY sort_order ASC, created_at ASC""",
+            step_id,
+        )
+        return [dict(r) for r in rows]
+
+    @staticmethod
+    async def list_for_steps(step_ids: list[UUID]) -> dict[UUID, list[dict]]:
+        if not step_ids:
+            return {}
+        rows = await DatabasePool.fetch(
+            """SELECT * FROM build_sub_steps
+               WHERE build_step_id = ANY($1::uuid[])
+               ORDER BY sort_order ASC, created_at ASC""",
+            step_ids,
+        )
+        out: dict = {}
+        for r in rows:
+            out.setdefault(r["build_step_id"], []).append(dict(r))
+        return out
+
+    @staticmethod
+    async def get(sub_id: UUID) -> Optional[dict]:
+        row = await DatabasePool.fetchrow(
+            "SELECT * FROM build_sub_steps WHERE id = $1", sub_id
+        )
+        return dict(row) if row else None
+
+    @staticmethod
+    async def create(step_id: UUID, title: str, description: Optional[str]) -> dict:
+        next_order = await DatabasePool.fetchval(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM build_sub_steps WHERE build_step_id = $1",
+            step_id,
+        )
+        row = await DatabasePool.fetchrow(
+            """INSERT INTO build_sub_steps (build_step_id, sort_order, title, description)
+               VALUES ($1, $2, $3, $4) RETURNING *""",
+            step_id, next_order, title, description,
+        )
+        return dict(row)
+
+    @staticmethod
+    async def update(
+        sub_id: UUID, title: Optional[str], description: Optional[str], sort_order: Optional[int],
+    ) -> Optional[dict]:
+        updates, params, idx = [], [], 1
+        if title is not None:
+            updates.append(f"title = ${idx}"); params.append(title); idx += 1
+        if description is not None:
+            updates.append(f"description = ${idx}"); params.append(description); idx += 1
+        if sort_order is not None:
+            updates.append(f"sort_order = ${idx}"); params.append(sort_order); idx += 1
+        if not updates:
+            return await BuildSubStepService.get(sub_id)
+        updates.append("updated_at = now()")
+        params.append(sub_id)
+        row = await DatabasePool.fetchrow(
+            f"UPDATE build_sub_steps SET {', '.join(updates)} WHERE id = ${idx} RETURNING *",
+            *params,
+        )
+        return dict(row) if row else None
+
+    @staticmethod
+    async def reorder(ids: list[UUID]) -> int:
+        if not ids:
+            return 0
+        async with DatabasePool._pool.acquire() as conn:  # noqa: SLF001
+            async with conn.transaction():
+                count = 0
+                for new_order, sub_id in enumerate(ids):
+                    result = await conn.execute(
+                        "UPDATE build_sub_steps SET sort_order = $1, updated_at = now() WHERE id = $2",
+                        new_order, sub_id,
+                    )
+                    if result == "UPDATE 1":
+                        count += 1
+        return count
+
+    @staticmethod
+    async def delete(sub_id: UUID) -> bool:
+        result = await DatabasePool.execute(
+            "DELETE FROM build_sub_steps WHERE id = $1", sub_id
+        )
+        return result == "DELETE 1"
+
+
 class DeviceProgressService:
     """Per-device, per-step status + photo aggregation for the worker UI."""
 
     @staticmethod
+    async def resolve_pinned_set(
+        device_id: UUID, revision_id: UUID, stage_key: str,
+    ) -> Optional[dict]:
+        """Pick which instruction_set the worker sees for this device.
+
+        If the device has already interacted with any step in some set
+        (a device_build_step_status row exists or a photo was captured),
+        return that set — even if it's no longer the active one. This
+        keeps in-flight units pinned to the steps they started with.
+
+        Otherwise return the currently active set for (revision, stage_key)."""
+        row = await DatabasePool.fetchrow(
+            """SELECT instruction_sets.* FROM instruction_sets
+               JOIN build_steps ON build_steps.instruction_set_id = instruction_sets.id
+               WHERE instruction_sets.product_revision_id = $2
+                 AND instruction_sets.stage_key = $3
+                 AND build_steps.id IN (
+                   SELECT build_step_id FROM device_build_step_status WHERE device_id = $1
+                   UNION
+                   SELECT build_step_id FROM build_step_photos WHERE device_id = $1
+                 )
+               ORDER BY instruction_sets.created_at ASC
+               LIMIT 1""",
+            device_id, revision_id, stage_key,
+        )
+        if row:
+            return dict(row)
+        return await InstructionSetService.get_active(revision_id, stage_key)
+
+    @staticmethod
     async def get_worker_view(
-        device_id: UUID, stage_key: str, revision_id: UUID
+        device_id: UUID, set_id: UUID,
     ) -> list[dict]:
-        """Return [{step, status, photos}, ...] ordered for the walkthrough."""
+        """Return [{step, sub_steps, status, photos}, ...] for the given set."""
         rows = await DatabasePool.fetch(
             """SELECT
                   bs.*,
@@ -323,12 +602,13 @@ class DeviceProgressService:
                FROM build_steps bs
                LEFT JOIN device_build_step_status dbss
                  ON dbss.build_step_id = bs.id AND dbss.device_id = $1
-               WHERE bs.product_revision_id = $2 AND bs.stage_key = $3
+               WHERE bs.instruction_set_id = $2
                ORDER BY bs.sort_order ASC, bs.created_at ASC""",
-            device_id, revision_id, stage_key,
+            device_id, set_id,
         )
         steps = [dict(r) for r in rows]
         step_ids = [s["id"] for s in steps]
+        subs_by_step = await BuildSubStepService.list_for_steps(step_ids)
 
         photos_by_step: dict = {}
         if step_ids:
@@ -344,6 +624,7 @@ class DeviceProgressService:
         return [
             {
                 "step": {k: v for k, v in s.items() if k not in {"checked", "checked_at", "checked_by_user_id"}},
+                "sub_steps": subs_by_step.get(s["id"], []),
                 "status": {
                     "build_step_id": s["id"],
                     "checked": bool(s["checked"]) if s["checked"] is not None else False,
