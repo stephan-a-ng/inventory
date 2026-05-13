@@ -11,11 +11,11 @@ vi.mock('@/features/auth/useAuth', () => ({
 
 import FirmwarePopCard from './FirmwarePopCard';
 
-const CHARGER = {
+const EVSE_DEVICE = {
   id: 'd1',
   mac_address: 'AA:BB:CC:DD:EE:01',
-  product_type: 'CHARGER',
-  device_name: 'CHARGER-0001',
+  product_type: 'EVSE',
+  device_name: 'EVSE-0001',
 };
 
 function jsonResponse(status, body) {
@@ -32,21 +32,21 @@ describe('<FirmwarePopCard />', () => {
     authFetchMock.mockReset();
   });
 
-  it('renders nothing for a non-CHARGER device', () => {
+  it('renders nothing for a non-EVSE device', () => {
     const { container } = render(
-      <FirmwarePopCard device={{ ...CHARGER, product_type: 'AEMS' }} />,
+      <FirmwarePopCard device={{ ...EVSE_DEVICE, product_type: 'AEMS' }} />,
     );
     expect(container.firstChild).toBeNull();
   });
 
   it('renders nothing for a viewer', () => {
     mockUser = { id: 'u2', role: 'viewer' };
-    const { container } = render(<FirmwarePopCard device={CHARGER} />);
+    const { container } = render(<FirmwarePopCard device={EVSE_DEVICE} />);
     expect(container.firstChild).toBeNull();
   });
 
   it('shows masked value + eye button before reveal; never fetches eagerly', () => {
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     expect(screen.getByRole('button', { name: /^reveal pop$/i })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /open in installer app/i }),
@@ -59,13 +59,13 @@ describe('<FirmwarePopCard />', () => {
   it('clicking the eye toggles reveal → hide', async () => {
     authFetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
-        mac_address: CHARGER.mac_address,
+        mac_address: EVSE_DEVICE.mac_address,
         pop: 'mfp_TOGGLE0000000000000000000000',
         pop_generated_at: '2026-05-11T19:22:14Z',
       }),
     );
 
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     await userEvent.click(screen.getByRole('button', { name: /^reveal pop$/i }));
     await waitFor(() =>
       expect(screen.getByTestId('firmware-pop-value')).toHaveTextContent(
@@ -82,13 +82,13 @@ describe('<FirmwarePopCard />', () => {
   it('reveal calls GET /api/devices/{mac}/pop and displays the returned value', async () => {
     authFetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
-        mac_address: CHARGER.mac_address,
+        mac_address: EVSE_DEVICE.mac_address,
         pop: 'mfp_ABCDEFGHIJKLMNOPQRSTUVWXYZ',
         pop_generated_at: '2026-05-11T19:22:14Z',
       }),
     );
 
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     await userEvent.click(screen.getByRole('button', { name: /^reveal pop$/i }));
 
     await waitFor(() =>
@@ -97,7 +97,7 @@ describe('<FirmwarePopCard />', () => {
       ),
     );
     expect(authFetchMock).toHaveBeenCalledWith(
-      `/api/devices/${CHARGER.mac_address}/pop`,
+      `/api/devices/${EVSE_DEVICE.mac_address}/pop`,
     );
   });
 
@@ -106,7 +106,7 @@ describe('<FirmwarePopCard />', () => {
       jsonResponse(409, { detail: 'Device has no PoP. Use POST /api/devices/{mac}/pop to generate one.' }),
     );
 
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     await userEvent.click(screen.getByRole('button', { name: /^reveal pop$/i }));
 
     await waitFor(() =>
@@ -118,21 +118,21 @@ describe('<FirmwarePopCard />', () => {
     authFetchMock
       .mockResolvedValueOnce(
         jsonResponse(200, {
-          mac_address: CHARGER.mac_address,
+          mac_address: EVSE_DEVICE.mac_address,
           pop: 'mfp_OLDPOPVALUE0000000000000000',
           pop_generated_at: '2026-05-11T19:22:14Z',
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse(201, {
-          mac_address: CHARGER.mac_address,
+          mac_address: EVSE_DEVICE.mac_address,
           pop: 'mfp_NEWROTATEDVALUE000000000000',
           pop_generated_at: '2026-05-12T08:00:00Z',
           rotated_from_existing: true,
         }),
       );
 
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     await userEvent.click(screen.getByRole('button', { name: /^reveal pop$/i }));
     await waitFor(() => expect(screen.getByTestId('firmware-pop-value')).toBeInTheDocument());
 
@@ -146,7 +146,7 @@ describe('<FirmwarePopCard />', () => {
         'mfp_NEWROTATEDVALUE000000000000',
       ),
     );
-    expect(authFetchMock).toHaveBeenNthCalledWith(2, `/api/devices/${CHARGER.mac_address}/pop`, {
+    expect(authFetchMock).toHaveBeenNthCalledWith(2, `/api/devices/${EVSE_DEVICE.mac_address}/pop`, {
       method: 'POST',
     });
   });
@@ -155,13 +155,13 @@ describe('<FirmwarePopCard />', () => {
     mockUser = { id: 'u3', role: 'installer' };
     authFetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
-        mac_address: CHARGER.mac_address,
+        mac_address: EVSE_DEVICE.mac_address,
         pop: 'mfp_ANYVAL0000000000000000000000',
         pop_generated_at: '2026-05-11T19:22:14Z',
       }),
     );
 
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     await userEvent.click(screen.getByRole('button', { name: /^reveal pop$/i }));
     await waitFor(() => expect(screen.getByTestId('firmware-pop-value')).toBeInTheDocument());
 
@@ -172,13 +172,13 @@ describe('<FirmwarePopCard />', () => {
     mockUser = { id: 'u4', role: 'technician' };
     authFetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
-        mac_address: CHARGER.mac_address,
+        mac_address: EVSE_DEVICE.mac_address,
         pop: 'mfp_TECH00000000000000000000000',
         pop_generated_at: '2026-05-11T19:22:14Z',
       }),
     );
 
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     await userEvent.click(screen.getByRole('button', { name: /^reveal pop$/i }));
     await waitFor(() => expect(screen.getByTestId('firmware-pop-value')).toBeInTheDocument());
 
@@ -190,13 +190,13 @@ describe('<FirmwarePopCard />', () => {
     delete window.location;
     window.location = { href: '' };
 
-    render(<FirmwarePopCard device={CHARGER} />);
+    render(<FirmwarePopCard device={EVSE_DEVICE} />);
     await userEvent.click(
       screen.getByRole('button', { name: /open in installer app/i }),
     );
 
     expect(window.location.href).toBe(
-      `moonfive-installer://device/${CHARGER.mac_address}`,
+      `moonfive-installer://device/${EVSE_DEVICE.mac_address}`,
     );
     window.location = original;
   });

@@ -71,7 +71,7 @@ ENV=$1
 
 deploy_backend() {
   local service=$1 frontend_url=$2 redirect_uri=$3 db_secret=$4 jwt_secret=$5 client_id_secret=$6 client_secret_secret=$7
-  local pop_secret=$8 mobile_ios_secret=$9 mobile_android_secret=${10} photo_bucket=${11}
+  local pop_secret=$8 mobile_ios_secret=$9 mobile_android_secret=${10} photo_bucket=${11} github_token_secret=${12}
 
   echo "→ Deploying backend: $service"
   gcloud run deploy "$service" \
@@ -82,7 +82,7 @@ deploy_backend() {
     --allow-unauthenticated \
     --add-cloudsql-instances "$CLOUDSQL_INSTANCE" \
     --service-account "$PHOTO_SIGNER_SA" \
-    --set-secrets "DATABASE_URL=${db_secret}:latest,JWT_SECRET=${jwt_secret}:latest,GOOGLE_CLIENT_ID=${client_id_secret}:latest,GOOGLE_CLIENT_SECRET=${client_secret_secret}:latest,POP_ENCRYPTION_KEY=${pop_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_IOS=${mobile_ios_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_ANDROID=${mobile_android_secret}:latest" \
+    --set-secrets "DATABASE_URL=${db_secret}:latest,JWT_SECRET=${jwt_secret}:latest,GOOGLE_CLIENT_ID=${client_id_secret}:latest,GOOGLE_CLIENT_SECRET=${client_secret_secret}:latest,POP_ENCRYPTION_KEY=${pop_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_IOS=${mobile_ios_secret}:latest,MOBILE_GOOGLE_CLIENT_ID_ANDROID=${mobile_android_secret}:latest,GITHUB_API_TOKEN=${github_token_secret}:latest" \
     --set-env-vars "ENVIRONMENT=${ENV},FRONTEND_URL=${frontend_url},GOOGLE_REDIRECT_URI=${redirect_uri},AUTHORIZED_DOMAIN=moonfive.tech,GCS_BUCKET=${photo_bucket},GCS_SIGNER_SA_EMAIL=${PHOTO_SIGNER_SA}"
 }
 
@@ -199,7 +199,8 @@ if [[ "$ENV" == "staging" ]]; then
     inventory-pop-encryption-key-staging \
     inventory-mobile-google-client-id-ios-staging \
     inventory-mobile-google-client-id-android-staging \
-    "$STAGING_PHOTO_BUCKET"
+    "$STAGING_PHOTO_BUCKET" \
+    inventory-github-api-token-staging
 
   deploy_frontend "$STAGING_WEB" "inventory-frontend-staging" "$STAGING_API_URL" "$INSTALLER_APP_URL_SCHEME"
   health_check "$STAGING_API_URL" "$STAGING_WEB_URL"
@@ -223,7 +224,8 @@ elif [[ "$ENV" == "production" ]]; then
     inventory-pop-encryption-key-production \
     inventory-mobile-google-client-id-ios-production \
     inventory-mobile-google-client-id-android-production \
-    "$PROD_PHOTO_BUCKET"
+    "$PROD_PHOTO_BUCKET" \
+    inventory-github-api-token-production
 
   deploy_frontend "$PROD_WEB" "inventory-frontend-production" "$PROD_API_URL" "$INSTALLER_APP_URL_SCHEME"
   health_check "$PROD_API_URL" "$PROD_PUBLIC_URL"

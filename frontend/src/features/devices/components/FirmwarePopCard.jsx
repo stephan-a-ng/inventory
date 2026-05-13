@@ -56,8 +56,10 @@ export default function FirmwarePopCard({ device }) {
     return () => clearTimeout(t);
   }, [copied]);
 
-  // Should never render this card for a non-CHARGER device or a viewer.
-  if (!device || device.product_type !== 'CHARGER') return null;
+  // Should never render this card for a non-EVSE device or a viewer.
+  // (CHARGER → EVSE rename — DeviceDetail's showFirmwarePopCard flag also
+  // gates on EVSE; this is the second line of defense.)
+  if (!device || device.product_type !== 'EVSE') return null;
   if (!role || role === 'viewer') return null;
 
   const isAdmin = role === 'admin';

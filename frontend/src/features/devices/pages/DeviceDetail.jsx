@@ -5,6 +5,7 @@ import AppSidebar from '@/shared/components/layout/AppSidebar';
 import DeviceForm from '@/features/devices/components/DeviceForm';
 import DeviceNotes from '@/features/devices/components/DeviceNotes';
 import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
+import FirmwareVersionCheckCard from '@/features/devices/components/FirmwareVersionCheckCard';
 import useAuth from '@/features/auth/useAuth';
 import { formatRelativeTime } from '@/features/audit/utils/relativeTime';
 import './DeviceDetail.css';
@@ -264,6 +265,11 @@ export default function DeviceDetail() {
     device.product_type === 'EVSE' &&
     user?.role &&
     user.role !== 'viewer';
+  // Firmware-version check (vs. latest GitHub release) is wired up for the
+  // two product types that have a tracked firmware repo.
+  const showFirmwareVersionCheck =
+    isFirmwarePanel &&
+    (device.product_type === 'BEMS' || device.product_type === 'EVSE');
 
   // Build-step walkthrough applies to Assembly / Firmware / Calibration /
   // QA / Staging — every stage that has authored work instructions.
@@ -282,8 +288,8 @@ export default function DeviceDetail() {
       <AppSidebar />
       <main style={{ flex: 1, minWidth: 0 }}>
         <div className="device-details-page">
-          <button type="button" className="back" onClick={() => navigate(`/devices/${id}`)}>
-            <ArrowLeft size={12} /> Back to overview
+          <button type="button" className="back" onClick={() => navigate('/devices')}>
+            <ArrowLeft size={12} /> Back to devices
           </button>
 
           {/* header strip */}
@@ -437,6 +443,11 @@ export default function DeviceDetail() {
                   input types. */}
               {stageKey === 'Assembly' && (
                 <DeviceNotes deviceId={id} currentUser={user} />
+              )}
+
+              {/* Firmware: version-vs-GitHub-release check for BEMS + EVSE */}
+              {showFirmwareVersionCheck && (
+                <FirmwareVersionCheckCard deviceId={id} currentUser={user} />
               )}
 
               {/* Firmware: per-device WiFi-commissioning PoP for EVSE devices */}

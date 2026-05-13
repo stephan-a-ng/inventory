@@ -183,7 +183,7 @@ describe('<DeviceDetail />', () => {
     expect(screen.getByText(/^Pending$/i)).toBeInTheDocument();
   });
 
-  it('Back to overview navigates to /devices/:id', async () => {
+  it('Back to devices navigates to /devices', async () => {
     mockApi({ device: baseDevice });
     function PathProbe() {
       const loc = useLocation();
@@ -193,17 +193,17 @@ describe('<DeviceDetail />', () => {
       <MemoryRouter initialEntries={[`/devices/${DEVICE_ID}/details`]}>
         <Routes>
           <Route path="/devices/:id/details" element={<DeviceDetail />} />
-          <Route path="/devices/:id" element={<PathProbe />} />
+          <Route path="/devices" element={<PathProbe />} />
         </Routes>
       </MemoryRouter>,
     );
 
-    const back = await screen.findByRole('button', { name: /Back to overview/i });
+    const back = await screen.findByRole('button', { name: /Back to devices/i });
     const user = userEvent.setup();
     await user.click(back);
 
     await waitFor(() => {
-      expect(screen.getByTestId('probe-path').textContent).toBe(`/devices/${DEVICE_ID}`);
+      expect(screen.getByTestId('probe-path').textContent).toBe('/devices');
     });
   });
 });

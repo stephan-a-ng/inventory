@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS devices (
 
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_name TEXT UNIQUE;
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS sequence_number INTEGER;
+-- Recorded when a device is intentionally on a firmware build other than the
+-- latest GitHub release for its product type. See firmware_release_service.py
+-- and the FirmwareVersionCheckCard on DeviceDetail.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS firmware_deviation_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
