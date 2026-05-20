@@ -109,7 +109,7 @@ async def clean_db(pg_pool: asyncpg.Pool):
             "inventory.build_sub_steps, inventory.build_steps, "
             "inventory.instruction_sets, inventory.firmware_versions, "
             "inventory.product_revisions, inventory.device_notes, "
-            "inventory.devices, inventory.users "
+            "inventory.device_mcus, inventory.devices, inventory.users "
             "RESTART IDENTITY CASCADE"
         )
     yield pg_pool

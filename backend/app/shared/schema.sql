@@ -487,3 +487,80 @@ CREATE TABLE IF NOT EXISTS build_sub_steps (
 );
 CREATE INDEX IF NOT EXISTS idx_build_sub_steps_parent
   ON build_sub_steps(build_step_id, sort_order, created_at);
+
+-- ============================================================================
+-- device_mcus: per-MCU identity + boot diagnostics
+-- ============================================================================
+--
+-- A device can have N MCUs (1 for simple AEMS/BEMS, 2 for current EVSE pairs,
+-- more for future products). Storing per-MCU data as a child table keeps the
+-- `devices` row narrow and scales without schema migrations when a product
+-- adds another microcontroller.
+--
+-- `role` is a free-form short string (e.g., "mcu1", "mcu2", "main") chosen by
+-- the firmware. It identifies the MCU's position in the device, not its model
+-- — that's `chip_type`. Unique per (device_id, role) so the same role can't
+-- be reported twice for one device.
+--
+-- All diagnostic columns are nullable: not every MCU reports every field, and
+-- early-product or partial-flash scenarios may carry only a subset.
+
+CREATE TABLE IF NOT EXISTS device_mcus (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+
+    -- identity (canonical lookup keys)
+    wifi_sta_mac TEXT NOT NULL,
+    bt_mac TEXT,
+
+    -- silicon
+    chip_type TEXT,
+    chip_revision INTEGER,
+
+    -- flash
+    flash_chip_id BIGINT,
+    flash_size BIGINT,
+    flash_mode TEXT,
+    flash_freq_mhz INTEGER,
+
+    -- psram
+    psram_size BIGINT,
+    psram_type TEXT,
+
+    -- security posture at flash time
+    secure_boot_enabled BOOLEAN,
+    flash_encryption_enabled BOOLEAN,
+
+    -- partition / firmware identity
+    active_partition TEXT,
+    project_name TEXT,
+    app_version TEXT,
+    elf_sha256 TEXT,
+    idf_version TEXT,
+    compile_date TEXT,
+    compile_time TEXT,
+
+    -- boot
+    reset_reason INTEGER,
+    initial_heap_free BIGINT,
+    initial_largest_free_block BIGINT,
+
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (device_id, role)
+);
+
+-- One MCU's MAC must be unique across the whole fleet. We lookup an incoming
+-- provisioning POST by any MCU's MAC, so a global unique constraint keeps
+-- accidental duplication impossible.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_device_mcus_mac
+    ON device_mcus (LOWER(wifi_sta_mac));
+
+-- Cross-cutting queries — "show me every mcu1 on firmware X."
+CREATE INDEX IF NOT EXISTS idx_device_mcus_role_fw
+    ON device_mcus (role, app_version);
+
+CREATE INDEX IF NOT EXISTS idx_device_mcus_device
+    ON device_mcus (device_id);
