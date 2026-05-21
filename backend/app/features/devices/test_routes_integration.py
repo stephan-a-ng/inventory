@@ -132,10 +132,12 @@ async def test_stats_returns_total_and_per_stage(client, auth_user):
     body0 = r0.json()
     assert body0["total"] == 0
     names0 = [s["name"] for s in body0["by_stage_name"]]
-    # The seeded canonical stages are present, ordered ascending.
-    assert names0[:6] == ["Assembly", "Firmware", "Calibration", "QA", "Staging", "Deployed"]
+    # The seeded canonical stages are present, ordered ascending. Firmware
+    # moved to step 1 (formerly Assembly) so flash-time provisioning is the
+    # first action operators see in the pipeline.
+    assert names0[:6] == ["Firmware", "Assembly", "Calibration", "QA", "Staging", "Deployed"]
 
-    # Create three devices across two product types — they should land at stage 1 ("Assembly").
+    # Create three devices across two product types — they should land at stage 1 ("Firmware").
     for mac, pt in [
         ("AA:BB:CC:DD:EE:30", "AEMS"),
         ("AA:BB:CC:DD:EE:31", "BEMS"),
@@ -147,9 +149,9 @@ async def test_stats_returns_total_and_per_stage(client, auth_user):
     r1 = await client.get("/api/devices/stats")
     body1 = r1.json()
     assert body1["total"] == 3
-    assembly = next(s for s in body1["by_stage_name"] if s["name"] == "Assembly")
-    assert assembly["count"] == 3
-    assert assembly["order"] == 1
+    firmware = next(s for s in body1["by_stage_name"] if s["name"] == "Firmware")
+    assert firmware["count"] == 3
+    assert firmware["order"] == 1
 
 
 async def test_lookup_by_mac_normalizes_case(client, auth_user):

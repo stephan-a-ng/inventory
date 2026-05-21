@@ -118,31 +118,46 @@ END $$;
 
 -- Default commissioning stages
 INSERT INTO commissioning_stages (product_type, name, "order", description) VALUES
-    ('AEMS', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('AEMS', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('AEMS', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('AEMS', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('AEMS', 'Calibration', 3, 'Sensor calibration and verification'),
     ('AEMS', 'QA', 4, 'Quality assurance testing'),
     ('AEMS', 'Staging', 5, 'Staged and ready for deployment'),
     ('AEMS', 'Deployed', 6, 'Deployed to production site'),
-    ('BEMS', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('BEMS', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('BEMS', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('BEMS', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('BEMS', 'Calibration', 3, 'Sensor calibration and verification'),
     ('BEMS', 'QA', 4, 'Quality assurance testing'),
     ('BEMS', 'Staging', 5, 'Staged and ready for deployment'),
     ('BEMS', 'Deployed', 6, 'Deployed to production site'),
-    ('EVSE', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('EVSE', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('EVSE', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('EVSE', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('EVSE', 'Calibration', 3, 'Sensor calibration and verification'),
     ('EVSE', 'QA', 4, 'Quality assurance testing'),
     ('EVSE', 'Staging', 5, 'Staged and ready for deployment'),
     ('EVSE', 'Deployed', 6, 'Deployed to production site'),
-    ('NETWORKING', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('NETWORKING', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('NETWORKING', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('NETWORKING', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('NETWORKING', 'Calibration', 3, 'Sensor calibration and verification'),
     ('NETWORKING', 'QA', 4, 'Quality assurance testing'),
     ('NETWORKING', 'Staging', 5, 'Staged and ready for deployment'),
     ('NETWORKING', 'Deployed', 6, 'Deployed to production site')
 ON CONFLICT DO NOTHING;
+
+-- One-shot reorder: existing DBs were seeded with Assembly=1, Firmware=2.
+-- New ordering puts Firmware first. Run under a deferred (well, two-step
+-- via temporary negative) sequence so the (product_type, "order") UNIQUE
+-- constraint is never violated mid-swap.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM commissioning_stages WHERE name = 'Assembly' AND "order" = 1
+  ) THEN
+    UPDATE commissioning_stages SET "order" = -1 WHERE name = 'Assembly' AND "order" = 1;
+    UPDATE commissioning_stages SET "order" = 1  WHERE name = 'Firmware' AND "order" = 2;
+    UPDATE commissioning_stages SET "order" = 2  WHERE name = 'Assembly' AND "order" = -1;
+  END IF;
+END $$;
 
 -- New columns for device naming
 CREATE INDEX IF NOT EXISTS idx_devices_device_name ON devices(device_name);

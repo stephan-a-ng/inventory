@@ -34,7 +34,22 @@ def _serialize_device(d: dict, *, include_pop: bool = False) -> dict:
 
     `include_pop` is opt-in and only used on the create response for EVSE
     devices. Listing, GET-by-id, and CSV export never include the PoP.
+
+    `mcus` is rendered in two shapes depending on context:
+    - list view: summary `[{role, wifi_sta_mac}, ...]` to keep the payload light
+    - detail view: full per-MCU rows (every diagnostic field) via _serialize_mcu
+    Both are detected by whether the input dict has `captured_at` set.
     """
+    mcus_out = []
+    for m in (d.get("mcus") or []):
+        if "captured_at" in m and m.get("captured_at") is not None:
+            mcus_out.append(_serialize_mcu(m))
+        else:
+            mcus_out.append({
+                "role": m.get("role"),
+                "wifi_sta_mac": m.get("wifi_sta_mac"),
+            })
+
     out = {
         "id": str(d["id"]),
         "mac_address": d["mac_address"],
@@ -49,6 +64,7 @@ def _serialize_device(d: dict, *, include_pop: bool = False) -> dict:
         "site_name": d.get("site_name"),
         "notes": d.get("notes"),
         "firmware_deviation_reason": d.get("firmware_deviation_reason"),
+        "mcus": mcus_out,
         "created_at": d["created_at"].isoformat(),
         "updated_at": d["updated_at"].isoformat(),
     }

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Download, Edit } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Download, Edit, Info } from 'lucide-react';
 import AppSidebar from '@/shared/components/layout/AppSidebar';
 import DeviceForm from '@/features/devices/components/DeviceForm';
 import DeviceNotes from '@/features/devices/components/DeviceNotes';
+import DeviceInfoModal from '@/features/devices/components/DeviceInfoModal';
 import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
 import FirmwareVersionCheckCard from '@/features/devices/components/FirmwareVersionCheckCard';
 import useAuth from '@/features/auth/useAuth';
@@ -136,6 +137,7 @@ export default function DeviceDetail() {
   const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [activeStageId, setActiveStageId] = useState(null);
   // Stage we're about to advance to — when set, the confirm modal is open.
   const [pendingAdvance, setPendingAdvance] = useState(null);
@@ -303,13 +305,16 @@ export default function DeviceDetail() {
             </div>
             <div className="ident">
               {device.serial_number && <div className="ser">{device.serial_number}</div>}
-              <div className="mac">{device.mac_address}</div>
               <span className="type">{device.product_type}</span>
             </div>
           </section>
 
           {/* actions */}
           <div className="actions">
+            <button type="button" className="btn" onClick={() => setShowInfo(true)}>
+              <Info size={14} />
+              Info
+            </button>
             {canEdit && (
               <button type="button" className="btn" onClick={() => setShowEdit(true)}>
                 <Edit size={14} />
@@ -467,6 +472,10 @@ export default function DeviceDetail() {
             loadAudit();
           }}
         />
+      )}
+
+      {showInfo && (
+        <DeviceInfoModal device={device} onClose={() => setShowInfo(false)} />
       )}
 
       {pendingAdvance && (

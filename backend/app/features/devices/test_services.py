@@ -54,7 +54,11 @@ async def test_update_device_returns_current_when_no_writable_fields(mock_pool):
     mock_pool.fetchrow.return_value = expected
 
     result = await DeviceService.update_device(device_id, {"device_name": "X"})
-    assert result == expected
+    # get_device now joins on device_mcus and adds an empty list when no MCUs
+    # have been provisioned yet; check the parent device fields match.
+    assert result["id"] == expected["id"]
+    assert result["mac_address"] == expected["mac_address"]
+    assert result.get("mcus") == []
 
 
 async def test_lookup_by_mac_uppercases_input(mock_pool):

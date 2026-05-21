@@ -16,6 +16,27 @@ from .services import DeviceService
 router = APIRouter(tags=["device-firmware"])
 
 
+@router.get("/api/devices/firmware-latest")
+async def firmware_latest(product_type: str, user: dict = Depends(get_current_user)):
+    """Latest release tag for a product type, used by the per-MCU firmware
+    comparison in DeviceInfoModal. The /firmware-status endpoint below is
+    per-device (compares against the parent row's firmware_version); this
+    one is per-product so the frontend can compare each MCU's app_version
+    independently in the info modal's tabs."""
+    repo = FirmwareReleaseService.repo_for(product_type)
+    if not repo:
+        return {"tracked": False, "latest": None}
+    latest = await FirmwareReleaseService.get_latest_tag(product_type)
+    return {
+        "tracked": True,
+        "repo": repo,
+        "latest": latest,
+        "release_url": (
+            FirmwareReleaseService.release_url(repo, latest) if latest else None
+        ),
+    }
+
+
 @router.get("/api/devices/{device_id}/firmware-status")
 async def firmware_status(device_id: UUID, user: dict = Depends(get_current_user)):
     device = await DeviceService.get_device(device_id)

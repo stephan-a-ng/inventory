@@ -26,6 +26,16 @@ AUTHORIZED_DOMAIN = os.getenv("AUTHORIZED_DOMAIN", "moonfive.tech")
 def is_authorized_email(email: str) -> bool:
     return email.lower().endswith(f"@{AUTHORIZED_DOMAIN}")
 
+# Dev-only login bypass. Enables `GET /api/auth/dev-login` which mints a
+# JWT for a synthetic admin user — handy when running the local frontend
+# against a backend that doesn't have a registered Google OAuth redirect
+# URI. Refuses to enable in deployed environments.
+DEV_LOGIN_ENABLED = (
+    os.getenv("DEV_LOGIN_ENABLED", "").lower() in ("1", "true", "yes")
+    and not IS_DEPLOYED
+)
+DEV_LOGIN_EMAIL = os.getenv("DEV_LOGIN_EMAIL", "dev@localhost")
+
 # Frontend URL
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 

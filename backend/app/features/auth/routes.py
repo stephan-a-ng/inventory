@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.shared.config import (
+    DEV_LOGIN_EMAIL, DEV_LOGIN_ENABLED,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
     JWT_EXPIRATION_HOURS,
     FRONTEND_URL, IS_DEPLOYED, is_authorized_email,
@@ -30,6 +31,36 @@ from .jwt import create_jwt_token, verify_jwt_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+@router.get("/dev-login")
+async def dev_login():
+    """Mint a JWT for a synthetic admin user and redirect to the frontend.
+    Refuses unless DEV_LOGIN_ENABLED=true on a non-deployed backend.
+
+    Use case: local dev against a backend whose Google OAuth client doesn't
+    have a registered redirect URI for the running port. Visit the URL once,
+    the cookie sticks for JWT_EXPIRATION_HOURS, no more login prompts."""
+    if not DEV_LOGIN_ENABLED:
+        raise HTTPException(
+            status_code=404,
+            detail="dev-login disabled. Start the backend with DEV_LOGIN_ENABLED=true.",
+        )
+    user = await DatabasePool.fetchrow(
+        """INSERT INTO users (email, name, role)
+           VALUES ($1, $2, 'admin')
+           ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+           RETURNING id, role""",
+        DEV_LOGIN_EMAIL, "Local Dev",
+    )
+    token = create_jwt_token(str(user["id"]), DEV_LOGIN_EMAIL, role=user["role"])
+    response = RedirectResponse(url=FRONTEND_URL)
+    response.set_cookie(
+        key="auth_token", value=token, httponly=True,
+        secure=False, samesite="lax",
+        max_age=JWT_EXPIRATION_HOURS * 3600,
+    )
+    return response
 
 
 @router.get("/google")

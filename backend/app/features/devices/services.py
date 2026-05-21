@@ -64,8 +64,31 @@ class DeviceService:
         """
         params.extend([page_size, offset])
 
+        # Pre-fetch MCU summaries for every device on this page in one
+        # query so we can render every MAC in the list view without an
+        # N+1. Returned as {device_id: [{role, wifi_sta_mac}, ...]}.
         rows = await DatabasePool.fetch(query, *params)
-        return [dict(r) for r in rows], total
+        device_ids = [r["id"] for r in rows]
+        mcu_summary = {}
+        if device_ids:
+            mcu_rows = await DatabasePool.fetch(
+                """SELECT device_id, role, wifi_sta_mac
+                   FROM device_mcus
+                   WHERE device_id = ANY($1::uuid[])
+                   ORDER BY device_id, role""",
+                device_ids,
+            )
+            for m in mcu_rows:
+                mcu_summary.setdefault(m["device_id"], []).append(
+                    {"role": m["role"], "wifi_sta_mac": m["wifi_sta_mac"]}
+                )
+
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["mcus"] = mcu_summary.get(r["id"], [])
+            out.append(d)
+        return out, total
 
     @staticmethod
     async def get_device(device_id: UUID) -> Optional[dict]:
@@ -76,7 +99,15 @@ class DeviceService:
                WHERE d.id = $1""",
             device_id,
         )
-        return dict(row) if row else None
+        if not row:
+            return None
+        device = dict(row)
+        mcu_rows = await DatabasePool.fetch(
+            "SELECT * FROM device_mcus WHERE device_id = $1 ORDER BY role",
+            device_id,
+        )
+        device["mcus"] = [dict(m) for m in mcu_rows]
+        return device
 
     @staticmethod
     async def create_device(data: dict) -> dict:
