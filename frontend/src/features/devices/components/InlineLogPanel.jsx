@@ -264,9 +264,21 @@ function LinesTable({ lines }) {
   return (
     <table style={{
       width: '100%', borderCollapse: 'collapse',
+      // table-layout: fixed pins the column widths to the colgroup so
+      // one giant unbroken message (e.g. an INVENTORY: pair JSON blob,
+      // ~1.5 KB of comma-no-space text) can't force the whole row wider
+      // than the container.
+      tableLayout: 'fixed',
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       fontSize: 11.5,
     }}>
+      <colgroup>
+        <col style={{ width: 48 }} />   {/* line_no */}
+        <col style={{ width: 64 }} />   {/* boot_ms */}
+        <col style={{ width: 44 }} />   {/* level chip */}
+        <col style={{ width: 120 }} />  {/* tag */}
+        <col />                          {/* message — takes remaining */}
+      </colgroup>
       <tbody>
         {lines.map((l) => (
           <LineRow key={`${l.flash_log_id || ''}-${l.line_no}`} line={l} />
@@ -301,10 +313,22 @@ function LineRow({ line }) {
           </span>
         ) : null}
       </td>
-      <td style={{ padding: '2px 6px', whiteSpace: 'nowrap', color: '#475569' }}>
+      <td style={{
+        padding: '2px 6px', color: '#475569',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}
+        title={line.tag || ''}
+      >
         {line.tag || ''}
       </td>
-      <td style={{ padding: '2px 10px 2px 6px', color: isParsed ? '#222' : '#64748b' }}>
+      <td style={{
+        padding: '2px 10px 2px 6px',
+        color: isParsed ? '#222' : '#64748b',
+        // Break long unbroken strings (JSON blobs, base64 SHAs, etc.)
+        // so the column stays inside the table's fixed width.
+        wordBreak: 'break-all',
+        overflowWrap: 'anywhere',
+      }}>
         {isParsed ? line.message : (line.raw || ' ')}
       </td>
     </tr>
