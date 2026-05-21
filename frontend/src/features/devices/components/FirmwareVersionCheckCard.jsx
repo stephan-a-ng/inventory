@@ -1,124 +1,76 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink, Pencil, Check, X, HelpCircle } from 'lucide-react';
+import { ExternalLink, HelpCircle } from 'lucide-react';
 import useAuth from '@/features/auth/useAuth';
 
 const HELP_TEXT =
-  'Compares this device\'s firmware_version against the latest release tag ' +
-  'on the product\'s firmware repo (BEMS → moon-five-technologies/OllieDriver, ' +
-  'EVSE → moon-five-technologies/argo). Cached for an hour.';
+  'Compares each MCU\'s app_version against the latest release tag on the ' +
+  'product\'s firmware repo (EVSE → moon-five-technologies/argo, BEMS → ' +
+  'moon-five-technologies/OllieDriver). Cached for an hour.';
 
 /**
- * Compares this device's firmware_version against the latest GitHub release
- * for its product type (BEMS → OllieDriver, EVSE → argo). Hidden for
- * untracked product types. Lets admin/technician record a reason when the
- * device is intentionally on an older build.
+ * Per-MCU firmware comparison. Renders one row per `device.mcus[]` entry —
+ * role, this device's app_version, the latest GitHub release for the product
+ * type, flashed-at timestamp, status badge (green = on latest, red = behind,
+ * amber = no app_version captured, grey = no tracked release).
  *
- * Backend: GET /api/devices/{id}/firmware-status. Saving a reason PATCHes
- * /api/devices/{id} with `firmware_deviation_reason`.
+ * Falls back to a single "no diagnostics captured" hint for devices that
+ * have never been provisioned through flash_provision.py.
  */
-export default function FirmwareVersionCheckCard({ deviceId, currentUser }) {
+export default function FirmwareVersionCheckCard({ device }) {
   const { authFetch } = useAuth();
 
-  const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'technician';
+  const [latest, setLatest] = useState({
+    loading: true, tracked: false, latest: null, release_url: null, repo: null,
+  });
 
   const load = useCallback(async () => {
-    if (!deviceId) return;
-    setLoading(true);
-    setError(null);
+    if (!device?.product_type) return;
     try {
-      const res = await authFetch(`/api/devices/${deviceId}/firmware-status`);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const data = await res.json();
-      setStatus(data);
-      setDraft(data.deviation_reason || '');
-    } catch (e) {
-      setError(e);
-    } finally {
-      setLoading(false);
+      const r = await authFetch(
+        `/api/devices/firmware-latest?product_type=${encodeURIComponent(device.product_type)}`,
+      );
+      const data = r.ok ? await r.json() : { tracked: false, latest: null };
+      setLatest({ loading: false, ...data });
+    } catch {
+      setLatest({ loading: false, tracked: false, latest: null });
     }
-  }, [deviceId, authFetch]);
+  }, [device?.product_type, authFetch]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function saveReason() {
-    if (saving) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await authFetch(`/api/devices/${deviceId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firmware_deviation_reason: draft.trim() }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `${res.status} ${res.statusText}`);
-      }
-      setStatus((s) => ({ ...s, deviation_reason: draft.trim() }));
-      setEditing(false);
-    } catch (e) {
-      setError(e);
-    } finally {
-      setSaving(false);
-    }
-  }
+  const mcus = device?.mcus || [];
 
-  function cancelEdit() {
-    setDraft(status?.deviation_reason || '');
-    setEditing(false);
-  }
-
-  if (loading) {
+  if (latest.loading) {
     return (
       <div className="sec firmware-check" data-testid="firmware-check-loading">
         <div className="sh"><h3>Firmware version</h3></div>
-        <div className="muted">Checking…</div>
+        <div className="muted">Checking latest release…</div>
       </div>
     );
   }
 
-  if (error) {
+  if (mcus.length === 0) {
     return (
-      <div className="sec firmware-check" data-testid="firmware-check-error">
-        <div className="sh"><h3>Firmware version</h3></div>
-        <div className="pop-error" role="alert">
-          {error.message || 'Failed to load firmware status.'}
-          <button type="button" className="rev-save" onClick={load}>Retry</button>
+      <div className="sec firmware-check" data-testid="firmware-check-empty">
+        <div className="sh">
+          <h3>
+            Firmware version
+            <span
+              className="firmware-check-help"
+              tabIndex={0}
+              aria-label={HELP_TEXT}
+              title={HELP_TEXT}
+            >
+              <HelpCircle size={14} aria-hidden />
+            </span>
+          </h3>
+        </div>
+        <div className="muted">
+          No per-MCU diagnostics captured yet. Run <code>flash_provision.py</code> on
+          a connected MCU to populate the firmware version on the device record.
         </div>
       </div>
     );
-  }
-
-  // Untracked product type — render nothing. DeviceDetail also gates on
-  // product_type, but this is a safe second line of defense if the card is
-  // ever mounted for an unmapped product.
-  if (!status || status.tracked === false) {
-    return null;
-  }
-
-  const { current, latest, is_latest: isLatest, repo, release_url: releaseUrl, deviation_reason: reason } = status;
-
-  let badge;
-  let badgeTone;
-  if (current == null) {
-    badge = 'Not recorded';
-    badgeTone = 'neutral';
-  } else if (latest == null) {
-    badge = 'Latest unknown';
-    badgeTone = 'neutral';
-  } else if (isLatest) {
-    badge = `On latest (${latest})`;
-    badgeTone = 'good';
-  } else {
-    badge = 'Out of date';
-    badgeTone = 'bad';
   }
 
   return (
@@ -136,94 +88,138 @@ export default function FirmwareVersionCheckCard({ deviceId, currentUser }) {
             <HelpCircle size={14} aria-hidden />
           </span>
         </h3>
-        <span className={`sub firmware-check-badge firmware-check-badge--${badgeTone}`}>
-          {badge}
-        </span>
+        {latest.repo && (
+          <a
+            href={`https://github.com/${latest.repo}/releases`}
+            target="_blank" rel="noreferrer"
+            className="sub firmware-check-repo"
+            style={{ color: 'inherit' }}
+          >
+            {latest.repo}
+          </a>
+        )}
       </div>
 
-      <dl className="firmware-check-grid">
-        <div>
-          <dt>Device</dt>
-          <dd data-testid="firmware-check-current">
-            {current || <span className="muted">— not set —</span>}
-          </dd>
-        </div>
-        <div>
-          <dt>Latest release</dt>
-          <dd data-testid="firmware-check-latest">
-            {latest ? (
-              <a href={releaseUrl} target="_blank" rel="noreferrer">
-                {latest} <ExternalLink size={12} aria-hidden />
-              </a>
-            ) : (
-              <span className="muted">unavailable</span>
-            )}
-            {repo && (
-              <div className="muted firmware-check-repo">
-                <a href={`https://github.com/${repo}/releases`} target="_blank" rel="noreferrer">
-                  {repo}
-                </a>
-              </div>
-            )}
-          </dd>
-        </div>
-      </dl>
-
-      {/* Deviation-reason block: shown when the device is verifiably not on
-          the latest. We don't surface it when latest is unknown — that'd be
-          misleading. */}
-      {isLatest === false && (
-        <div className="firmware-deviation">
-          <div className="firmware-deviation-label">
-            Reason for being on {current}
-            {canEdit && !editing && (
-              <button
-                type="button"
-                className="rev-save firmware-deviation-edit"
-                onClick={() => setEditing(true)}
-                aria-label={reason ? 'Edit deviation reason' : 'Add deviation reason'}
-              >
-                <Pencil size={12} aria-hidden /> {reason ? 'Edit' : 'Add'}
-              </button>
-            )}
-          </div>
-
-          {editing ? (
-            <div className="firmware-deviation-editor">
-              <textarea
-                rows={3}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Why is this device on an older build?"
-                disabled={saving}
-                data-testid="firmware-deviation-textarea"
-              />
-              <div className="firmware-deviation-actions">
-                <button
-                  type="button"
-                  className="rev-save"
-                  onClick={saveReason}
-                  disabled={saving}
-                >
-                  <Check size={12} aria-hidden /> Save
-                </button>
-                <button
-                  type="button"
-                  className="rev-save firmware-deviation-cancel"
-                  onClick={cancelEdit}
-                  disabled={saving}
-                >
-                  <X size={12} aria-hidden /> Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="firmware-deviation-text" data-testid="firmware-deviation-text">
-              {reason || <span className="muted">No reason recorded yet.</span>}
-            </p>
-          )}
-        </div>
-      )}
+      <table className="firmware-mcu-table" style={tableStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>MCU</th>
+            <th style={thStyle}>This device</th>
+            <th style={thStyle}>Latest release</th>
+            <th style={thStyle}>Flashed</th>
+            <th style={thStyle}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {mcus.map((m) => (
+            <McuFirmwareRow key={m.role} mcu={m} latest={latest} />
+          ))}
+        </tbody>
+      </table>
     </div>
   );
+}
+
+function McuFirmwareRow({ mcu, latest }) {
+  const current = mcu.app_version;
+  const matches = isVersionMatch(current, latest.latest);
+
+  let chipBg, chipFg, chipBorder, chipLabel;
+  if (!latest.tracked) {
+    chipBg = '#f1ecdc'; chipFg = '#666'; chipBorder = '#dfd6bf'; chipLabel = 'untracked';
+  } else if (!current) {
+    chipBg = '#fef3c7'; chipFg = '#92400e'; chipBorder = '#fde68a'; chipLabel = 'no version';
+  } else if (matches === true) {
+    chipBg = '#dcfce7'; chipFg = '#166534'; chipBorder = '#86efac'; chipLabel = 'on latest';
+  } else if (matches === false) {
+    chipBg = '#fee2e2'; chipFg = '#991b1b'; chipBorder = '#fca5a5'; chipLabel = 'behind';
+  } else {
+    chipBg = '#f1ecdc'; chipFg = '#666'; chipBorder = '#dfd6bf'; chipLabel = 'unknown';
+  }
+
+  // Row tint matches the chip so the at-a-glance scan is obvious.
+  const rowBg = matches === true ? 'rgba(220,252,231,0.45)'
+    : matches === false ? 'rgba(254,226,226,0.45)'
+    : 'transparent';
+
+  return (
+    <tr style={{ background: rowBg }}>
+      <td style={{ ...tdStyle, fontWeight: 600 }}>
+        <span style={roleBadgeStyle}>{mcu.role.toUpperCase()}</span>
+      </td>
+      <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)' }}>
+        {current || <span className="muted">—</span>}
+      </td>
+      <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)' }}>
+        {latest.latest ? (
+          <a href={latest.release_url} target="_blank" rel="noreferrer"
+             style={{ color: 'inherit', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+            {latest.latest} <ExternalLink size={11} aria-hidden />
+          </a>
+        ) : (
+          <span className="muted">unavailable</span>
+        )}
+      </td>
+      <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)', fontSize: '12px' }}>
+        {mcu.captured_at ? new Date(mcu.captured_at).toLocaleString() : '—'}
+      </td>
+      <td style={tdStyle}>
+        <span style={{
+          display: 'inline-block',
+          background: chipBg,
+          color: chipFg,
+          border: `1px solid ${chipBorder}`,
+          padding: '2px 8px',
+          borderRadius: 999,
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+        }}>
+          {chipLabel}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+const tableStyle = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  marginTop: 8,
+};
+
+const thStyle = {
+  textAlign: 'left',
+  padding: '8px 10px',
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#888',
+  borderBottom: '1px solid #ece6d6',
+};
+
+const tdStyle = {
+  padding: '10px 10px',
+  borderBottom: '1px solid #f4f0e2',
+  fontSize: 13,
+  verticalAlign: 'middle',
+};
+
+const roleBadgeStyle = {
+  background: '#222',
+  color: 'white',
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: '0.06em',
+  padding: '3px 8px',
+  borderRadius: 4,
+  textTransform: 'uppercase',
+};
+
+function isVersionMatch(current, latest) {
+  if (!current || !latest) return null;
+  const norm = (s) => (s.startsWith('v') || s.startsWith('V')) ? s.slice(1) : s;
+  return norm(current) === norm(latest);
 }

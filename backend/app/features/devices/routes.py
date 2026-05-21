@@ -168,7 +168,7 @@ def _serialize_mcu(m: dict) -> dict:
 async def provision_device(
     payload: ProvisionRequest,
     response: Response,
-    _: dict = Depends(require_api_key),
+    user: dict = Depends(require_api_key),
 ):
     """Host-side flash-tool entry point. Idempotent upsert keyed on any MCU's
     wifi_sta_mac. First successful POST creates a device row (auto-assigned
@@ -186,16 +186,18 @@ async def provision_device(
         mcus=[m.model_dump() for m in payload.mcus],
     )
 
-    if result["created"]:
-        await AuditService.log_action(
-            device_id=result["device_id"],
-            user_id=None,
-            action="provisioned_from_flash_tool",
-            new_value={
-                "macs": [m.wifi_sta_mac.upper() for m in payload.mcus],
-                "roles": [m.role for m in payload.mcus],
-            },
-        )
+    # Audit on every call so re-flashes are visible too. user["id"] is the
+    # OAuth-minted-key owner when DB auth was used; None for env-var fallback.
+    await AuditService.log_action(
+        device_id=result["device_id"],
+        user_id=user.get("id"),
+        action="provisioned_from_flash_tool" if result["created"] else "reflashed",
+        new_value={
+            "macs": [m.wifi_sta_mac.upper() for m in payload.mcus],
+            "roles": [m.role for m in payload.mcus],
+            "via": user.get("auth"),  # "api_key_db" or "api_key_env"
+        },
+    )
 
     return {
         "device_id": str(result["device_id"]),

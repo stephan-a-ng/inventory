@@ -430,17 +430,6 @@ export default function DeviceDetail() {
                   <div className="l">Owner</div>
                   <div className="v">{activeWindow?.owner || '—'}</div>
                 </div>
-                <div className="cell">
-                  <div className="l">Events</div>
-                  <div className="v mono">{activeWindow?.events?.length ?? 0}</div>
-                  {activeWindow?.events?.length > 0 && (
-                    <div className="sub">
-                      last {formatRelativeTime(
-                        activeWindow.events[activeWindow.events.length - 1].created_at,
-                      )}
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* Per-user attributed notes feed. Shown on Assembly for now;
@@ -450,9 +439,9 @@ export default function DeviceDetail() {
                 <DeviceNotes deviceId={id} currentUser={user} />
               )}
 
-              {/* Firmware: version-vs-GitHub-release check for BEMS + EVSE */}
+              {/* Firmware: per-MCU version-vs-GitHub-release check */}
               {showFirmwareVersionCheck && (
-                <FirmwareVersionCheckCard deviceId={id} currentUser={user} />
+                <FirmwareVersionCheckCard device={device} />
               )}
 
               {/* Firmware: per-device WiFi-commissioning PoP for EVSE devices */}
