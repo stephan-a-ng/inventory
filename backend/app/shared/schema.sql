@@ -609,25 +609,79 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id) WHERE revoked_at IS NULL;
 
 -- ============================================================================
--- device_flash_logs: serial-console captures from flash_provision.py
+-- device_flash_logs + device_flash_log_lines
 -- ============================================================================
 --
--- Each row is one (device, MCU, flash) capture. Append-only — every flash
--- creates a fresh row so the history of what was running on the device
--- before/after each flash is forensically preserved. The actual log bytes
--- live in GCS at `flash-logs/<device_id>/<mcu_role>-<utc_timestamp>.log`;
--- this table holds only the metadata + GCS key for lookup.
+-- Serial-console captures from flash_provision.py, parsed into one row per
+-- ESP-IDF log line so the data is SQL-queryable ("every ERROR any MCU
+-- emitted in the last 24h", "tag=gfi_monitor across the fleet", "any line
+-- containing 'BROWNOUT'"). Each capture is also kept verbatim in
+-- raw_bytes so the parser can be re-run later if the line grammar evolves.
+--
+-- We never drop log bytes on a parse failure — any line that doesn't match
+-- the standard `[IWE] (boot_ms) tag: message` shape still becomes a row,
+-- just with NULL parsed columns and the original text in `raw`.
 
 CREATE TABLE IF NOT EXISTS device_flash_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     mcu_role TEXT NOT NULL,
-    gcs_key TEXT NOT NULL,
     byte_size BIGINT NOT NULL,
     captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Migrate the existing table shape: drop gcs_key (we no longer use object
+-- storage for log bodies) and add line_count + raw_bytes. Each ALTER is
+-- guarded by an existence check so re-running schema.sql on a fresh DB is
+-- a no-op.
+ALTER TABLE device_flash_logs DROP COLUMN IF EXISTS gcs_key;
+ALTER TABLE device_flash_logs ADD COLUMN IF NOT EXISTS line_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE device_flash_logs ADD COLUMN IF NOT EXISTS raw_bytes BYTEA;
+
 -- Newest-first for the device-detail UI's "Flash history" list.
 CREATE INDEX IF NOT EXISTS idx_device_flash_logs_device_time
     ON device_flash_logs (device_id, captured_at DESC);
+
+CREATE TABLE IF NOT EXISTS device_flash_log_lines (
+    id BIGSERIAL PRIMARY KEY,
+    flash_log_id UUID NOT NULL REFERENCES device_flash_logs(id) ON DELETE CASCADE,
+    -- device_id + mcu_role + captured_at are denormalized from the parent
+    -- so cross-fleet queries don't pay a JOIN.
+    device_id UUID NOT NULL,
+    mcu_role TEXT NOT NULL,
+    line_no INTEGER NOT NULL,
+    boot_ms BIGINT,             -- "(12345)" — ms since chip reset; NULL when unparsed
+    level CHAR(1),              -- I/W/E/D; NULL when unparsed
+    tag TEXT,                   -- "main_mcu1", "gfi_monitor", ...; NULL when unparsed
+    message TEXT,               -- rest of the line after "tag: "; NULL when unparsed
+    raw TEXT NOT NULL,          -- the verbatim line, never NULL
+    captured_at TIMESTAMPTZ NOT NULL
+);
+
+-- Per-capture page-through ("show me lines 1..200 of this capture").
+CREATE INDEX IF NOT EXISTS idx_flash_log_lines_capture
+    ON device_flash_log_lines (flash_log_id, line_no);
+
+-- Cross-cutting "tag=X / level=E in the last 24h" queries.
+CREATE INDEX IF NOT EXISTS idx_flash_log_lines_tag_level
+    ON device_flash_log_lines (tag, level, captured_at DESC);
+
+-- Per-device history scans (the cross-cutting endpoint also accepts
+-- device_id as a filter; this index makes that path fast on its own).
+CREATE INDEX IF NOT EXISTS idx_flash_log_lines_device_time
+    ON device_flash_log_lines (device_id, captured_at DESC);
+
+-- Trigram GIN for cheap substring search on message. pg_trgm ships with
+-- core Postgres + every managed offering we'd realistically deploy to,
+-- but CREATE EXTENSION is guarded so DBs without it don't blow up on
+-- startup; the index just won't be built and `q=` queries fall back to
+-- a sequential LIKE scan.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_trgm') THEN
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE INDEX IF NOT EXISTS idx_flash_log_lines_message_trgm
+      ON device_flash_log_lines USING GIN (message gin_trgm_ops);
+  END IF;
+END $$;

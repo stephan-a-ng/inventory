@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, ExternalLink, X } from 'lucide-react';
+import { Eye, ExternalLink, X } from 'lucide-react';
 
 import useAuth from '@/features/auth/useAuth';
 import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
+import FlashLogViewer from '@/features/devices/components/FlashLogViewer';
 
 /**
  * Per-MCU identity + boot-diagnostics modal opened by the Info button
@@ -162,6 +163,7 @@ export default function DeviceInfoModal({ device, onClose }) {
               <McuTabContent
                 mcu={activeMcu}
                 latest={latestRelease}
+                deviceId={device.id}
                 flashLogs={flashLogs.logs.filter((l) => l.mcu_role === activeMcu.role)}
                 flashLogsLoading={flashLogs.loading}
               />
@@ -193,7 +195,7 @@ function TabButton({ active, onClick, label }) {
   );
 }
 
-function McuTabContent({ mcu, latest, flashLogs, flashLogsLoading }) {
+function McuTabContent({ mcu, latest, deviceId, flashLogs, flashLogsLoading }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
@@ -249,17 +251,18 @@ function McuTabContent({ mcu, latest, flashLogs, flashLogsLoading }) {
       )}
 
       <h4 style={sectionLabelStyle}>Flash history</h4>
-      <FlashHistory logs={flashLogs} loading={flashLogsLoading} />
+      <FlashHistory logs={flashLogs} loading={flashLogsLoading} deviceId={deviceId} />
     </div>
   );
 }
 
 /**
- * Per-MCU list of flash-time serial captures (newest first). Each entry
- * links to a 5-minute signed GCS URL via /api/devices/flash-logs/{id}.
+ * Per-MCU list of flash-time serial captures (newest first). Clicking
+ * View opens FlashLogViewer, which streams parsed lines for that
+ * capture from /api/devices/flash-logs/{id}/lines.
  */
-function FlashHistory({ logs, loading }) {
-  const { authFetch } = useAuth();
+function FlashHistory({ logs, loading, deviceId }) {
+  const [viewing, setViewing] = useState(null); // captureId being viewed
 
   if (loading) {
     return <div style={{ fontSize: 12.5, color: '#888' }}>Loading captures…</div>;
@@ -272,59 +275,55 @@ function FlashHistory({ logs, loading }) {
     );
   }
 
-  async function download(logId) {
-    try {
-      const r = await authFetch(`/api/devices/flash-logs/${logId}`);
-      if (!r.ok) {
-        // 404/401 path — bail without redirecting; user sees no-op.
-        return;
-      }
-      const data = await r.json();
-      if (data.download_url) {
-        window.open(data.download_url, '_blank', 'noopener');
-      }
-    } catch {
-      /* network errors silent — links are diagnostic, not critical */
-    }
-  }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-      {logs.map((l) => (
-        <div
-          key={l.id}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 12, padding: '8px 10px', background: '#fafaf6',
-            border: '1px solid #ece6d6', borderRadius: 6, fontSize: 12.5,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: 'var(--m5-font-mono)' }}>
-              {new Date(l.captured_at).toLocaleString()}
-            </div>
-            <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-              {formatBytes(l.byte_size) || `${l.byte_size} B`}
-              {l.uploaded_by_email && (
-                <> · uploaded by <strong>{l.uploaded_by_email}</strong></>
-              )}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => download(l.id)}
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+        {logs.map((l) => (
+          <div
+            key={l.id}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '4px 10px', border: '1px solid #d9d3c0',
-              borderRadius: 6, background: 'white', cursor: 'pointer',
-              fontSize: 12, color: '#222',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 12, padding: '8px 10px', background: '#fafaf6',
+              border: '1px solid #ece6d6', borderRadius: 6, fontSize: 12.5,
             }}
           >
-            <Download size={12} /> Download
-          </button>
-        </div>
-      ))}
-    </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--m5-font-mono)' }}>
+                {new Date(l.captured_at).toLocaleString()}
+              </div>
+              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                {l.line_count != null ? `${l.line_count} lines` : null}
+                {l.byte_size != null && (
+                  <> · {formatBytes(l.byte_size) || `${l.byte_size} B`}</>
+                )}
+                {l.uploaded_by_email && (
+                  <> · uploaded by <strong>{l.uploaded_by_email}</strong></>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewing(l.id)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '4px 10px', border: '1px solid #d9d3c0',
+                borderRadius: 6, background: 'white', cursor: 'pointer',
+                fontSize: 12, color: '#222',
+              }}
+            >
+              <Eye size={12} /> View
+            </button>
+          </div>
+        ))}
+      </div>
+      {viewing && (
+        <FlashLogViewer
+          captureId={viewing}
+          deviceId={deviceId}
+          onClose={() => setViewing(null)}
+        />
+      )}
+    </>
   );
 }
 
