@@ -607,3 +607,27 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id) WHERE revoked_at IS NULL;
+
+-- ============================================================================
+-- device_flash_logs: serial-console captures from flash_provision.py
+-- ============================================================================
+--
+-- Each row is one (device, MCU, flash) capture. Append-only — every flash
+-- creates a fresh row so the history of what was running on the device
+-- before/after each flash is forensically preserved. The actual log bytes
+-- live in GCS at `flash-logs/<device_id>/<mcu_role>-<utc_timestamp>.log`;
+-- this table holds only the metadata + GCS key for lookup.
+
+CREATE TABLE IF NOT EXISTS device_flash_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    mcu_role TEXT NOT NULL,
+    gcs_key TEXT NOT NULL,
+    byte_size BIGINT NOT NULL,
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Newest-first for the device-detail UI's "Flash history" list.
+CREATE INDEX IF NOT EXISTS idx_device_flash_logs_device_time
+    ON device_flash_logs (device_id, captured_at DESC);

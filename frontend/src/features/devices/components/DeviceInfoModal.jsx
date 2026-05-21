@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { X, ExternalLink } from 'lucide-react';
+import { Download, ExternalLink, X } from 'lucide-react';
 
 import useAuth from '@/features/auth/useAuth';
 import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
@@ -40,6 +40,24 @@ export default function DeviceInfoModal({ device, onClose }) {
     })();
     return () => { cancelled = true; };
   }, [device?.product_type, authFetch]);
+
+  // Flash-log history is a property of the whole device, but we render
+  // the per-MCU slice inside each tab. Fetch once when the modal opens.
+  const [flashLogs, setFlashLogs] = useState({ loading: true, logs: [] });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!device?.id) return;
+      try {
+        const r = await authFetch(`/api/devices/${device.id}/flash-logs`);
+        const data = r.ok ? await r.json() : { logs: [] };
+        if (!cancelled) setFlashLogs({ loading: false, logs: data.logs || [] });
+      } catch {
+        if (!cancelled) setFlashLogs({ loading: false, logs: [] });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [device?.id, authFetch]);
 
   const onKey = useCallback((e) => {
     if (e.key === 'Escape') onClose();
@@ -144,6 +162,8 @@ export default function DeviceInfoModal({ device, onClose }) {
               <McuTabContent
                 mcu={activeMcu}
                 latest={latestRelease}
+                flashLogs={flashLogs.logs.filter((l) => l.mcu_role === activeMcu.role)}
+                flashLogsLoading={flashLogs.loading}
               />
             )}
           </>
@@ -173,7 +193,7 @@ function TabButton({ active, onClick, label }) {
   );
 }
 
-function McuTabContent({ mcu, latest }) {
+function McuTabContent({ mcu, latest, flashLogs, flashLogsLoading }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
@@ -227,6 +247,83 @@ function McuTabContent({ mcu, latest }) {
           ]} mono />
         </div>
       )}
+
+      <h4 style={sectionLabelStyle}>Flash history</h4>
+      <FlashHistory logs={flashLogs} loading={flashLogsLoading} />
+    </div>
+  );
+}
+
+/**
+ * Per-MCU list of flash-time serial captures (newest first). Each entry
+ * links to a 5-minute signed GCS URL via /api/devices/flash-logs/{id}.
+ */
+function FlashHistory({ logs, loading }) {
+  const { authFetch } = useAuth();
+
+  if (loading) {
+    return <div style={{ fontSize: 12.5, color: '#888' }}>Loading captures…</div>;
+  }
+  if (!logs || logs.length === 0) {
+    return (
+      <div style={{ fontSize: 12.5, color: '#888' }}>
+        No captures yet. Re-flash this MCU to record a 60-second boot snapshot.
+      </div>
+    );
+  }
+
+  async function download(logId) {
+    try {
+      const r = await authFetch(`/api/devices/flash-logs/${logId}`);
+      if (!r.ok) {
+        // 404/401 path — bail without redirecting; user sees no-op.
+        return;
+      }
+      const data = await r.json();
+      if (data.download_url) {
+        window.open(data.download_url, '_blank', 'noopener');
+      }
+    } catch {
+      /* network errors silent — links are diagnostic, not critical */
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+      {logs.map((l) => (
+        <div
+          key={l.id}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12, padding: '8px 10px', background: '#fafaf6',
+            border: '1px solid #ece6d6', borderRadius: 6, fontSize: 12.5,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--m5-font-mono)' }}>
+              {new Date(l.captured_at).toLocaleString()}
+            </div>
+            <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+              {formatBytes(l.byte_size) || `${l.byte_size} B`}
+              {l.uploaded_by_email && (
+                <> · uploaded by <strong>{l.uploaded_by_email}</strong></>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => download(l.id)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', border: '1px solid #d9d3c0',
+              borderRadius: 6, background: 'white', cursor: 'pointer',
+              fontSize: 12, color: '#222',
+            }}
+          >
+            <Download size={12} /> Download
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
