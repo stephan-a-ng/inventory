@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, ExternalLink, HelpCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, ExternalLink, HelpCircle } from 'lucide-react';
 import useAuth from '@/features/auth/useAuth';
 import FlashLogViewer from '@/features/devices/components/FlashLogViewer';
 
@@ -26,6 +26,8 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
   // Per-MCU flash captures, used both for the inline expandable history
   // under each row and for the "View" button that opens FlashLogViewer.
   const [flashLogs, setFlashLogs] = useState({ loading: true, logs: [] });
+  // Which MCU role's history is currently expanded (null = none).
+  const [expandedRole, setExpandedRole] = useState(null);
   // captureId currently rendered in the per-capture log viewer modal.
   const [viewingCaptureId, setViewingCaptureId] = useState(null);
 
@@ -129,6 +131,7 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
       <table className="firmware-mcu-table" style={tableStyle}>
         <thead>
           <tr>
+            <th style={{ ...thStyle, width: 24 }}></th>
             <th style={thStyle}>MCU</th>
             <th style={thStyle}>This device</th>
             <th style={thStyle}>Latest release</th>
@@ -137,23 +140,25 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
           </tr>
         </thead>
         <tbody>
-          {mcus.map((m) => (
-            <McuFirmwareRow key={m.role} mcu={m} latest={latest} />
-          ))}
+          {mcus.map((m) => {
+            const captures = logsByRole[m.role] || [];
+            const expanded = expandedRole === m.role;
+            return (
+              <McuFirmwareRow
+                key={m.role}
+                mcu={m}
+                latest={latest}
+                captures={captures}
+                expanded={expanded}
+                onToggle={() => setExpandedRole(expanded ? null : m.role)}
+                onView={(captureId) => setViewingCaptureId(captureId)}
+              />
+            );
+          })}
         </tbody>
       </table>
 
       <FlashedByLine audit={audit} />
-
-      {/* Always-visible per-MCU flash history. Each capture row is itself
-          clickable to drill into the parsed-line viewer; no expand step. */}
-      <h4 style={historyHeading}>Flash history</h4>
-      <FlashHistorySection
-        mcus={mcus}
-        logsByRole={logsByRole}
-        loading={flashLogs.loading}
-        onView={(captureId) => setViewingCaptureId(captureId)}
-      />
 
       {viewingCaptureId && (
         <FlashLogViewer
@@ -162,81 +167,6 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
           onClose={() => setViewingCaptureId(null)}
         />
       )}
-    </div>
-  );
-}
-
-const historyHeading = {
-  margin: '20px 0 6px',
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: '0.1em',
-  textTransform: 'uppercase',
-  color: '#999',
-};
-
-function FlashHistorySection({ mcus, logsByRole, loading, onView }) {
-  if (loading) {
-    return <div style={{ fontSize: 12.5, color: '#888' }}>Loading captures…</div>;
-  }
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-      {mcus.map((m) => {
-        const captures = logsByRole[m.role] || [];
-        return (
-          <div key={m.role}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 11, color: '#666', marginBottom: 4,
-            }}>
-              <span style={roleBadgeStyle}>{m.role.toUpperCase()}</span>
-              {captures.length === 0 && (
-                <span style={{ color: '#888', fontStyle: 'italic' }}>
-                  no captures yet — run flash_provision.py {m.role} to record one
-                </span>
-              )}
-            </div>
-            {captures.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {captures.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => onView(l.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      gap: 12, padding: '8px 10px', background: '#fafaf6',
-                      border: '1px solid #ece6d6', borderRadius: 6, fontSize: 12.5,
-                      cursor: 'pointer', textAlign: 'left',
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontFamily: 'var(--m5-font-mono)' }}>
-                        {new Date(l.captured_at).toLocaleString()}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-                        {l.line_count != null ? `${l.line_count} lines` : null}
-                        {l.byte_size != null && (
-                          <> · {formatBytes(l.byte_size) || `${l.byte_size} B`}</>
-                        )}
-                        {l.uploaded_by_email && (
-                          <> · uploaded by <strong>{l.uploaded_by_email}</strong></>
-                        )}
-                      </div>
-                    </div>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      fontSize: 12, color: '#555',
-                    }}>
-                      <Eye size={12} /> view log
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -297,7 +227,7 @@ function FlashedByLine({ audit }) {
   );
 }
 
-function McuFirmwareRow({ mcu, latest }) {
+function McuFirmwareRow({ mcu, latest, captures, expanded, onToggle, onView }) {
   const current = mcu.app_version;
   const matches = isVersionMatch(current, latest.latest);
 
@@ -320,43 +250,110 @@ function McuFirmwareRow({ mcu, latest }) {
     : 'transparent';
 
   return (
-    <tr style={{ background: rowBg }}>
-      <td style={{ ...tdStyle, fontWeight: 600 }}>
-        <span style={roleBadgeStyle}>{mcu.role.toUpperCase()}</span>
-      </td>
-      <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)' }}>
-        {current || <span className="muted">—</span>}
-      </td>
-      <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)' }}>
-        {latest.latest ? (
-          <a href={latest.release_url} target="_blank" rel="noreferrer"
-             style={{ color: 'inherit', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-            {latest.latest} <ExternalLink size={11} aria-hidden />
-          </a>
-        ) : (
-          <span className="muted">unavailable</span>
-        )}
-      </td>
-      <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)', fontSize: '12px' }}>
-        {mcu.captured_at ? new Date(mcu.captured_at).toLocaleString() : '—'}
-      </td>
-      <td style={tdStyle}>
-        <span style={{
-          display: 'inline-block',
-          background: chipBg,
-          color: chipFg,
-          border: `1px solid ${chipBorder}`,
-          padding: '2px 8px',
-          borderRadius: 999,
-          fontSize: 11,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-        }}>
-          {chipLabel}
-        </span>
-      </td>
-    </tr>
+    <>
+      <tr
+        style={{ background: rowBg, cursor: 'pointer' }}
+        onClick={onToggle}
+        title={expanded ? 'Click to collapse flash history' : 'Click to expand flash history'}
+      >
+        <td style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8', paddingRight: 0 }}>
+          {expanded
+            ? <ChevronDown size={14} aria-hidden />
+            : <ChevronRight size={14} aria-hidden />}
+        </td>
+        <td style={{ ...tdStyle, fontWeight: 600 }}>
+          <span style={roleBadgeStyle}>{mcu.role.toUpperCase()}</span>
+        </td>
+        <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)' }}>
+          {current || <span className="muted">—</span>}
+        </td>
+        <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)' }}>
+          {latest.latest ? (
+            <a href={latest.release_url} target="_blank" rel="noreferrer"
+               onClick={(e) => e.stopPropagation()}
+               style={{ color: 'inherit', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              {latest.latest} <ExternalLink size={11} aria-hidden />
+            </a>
+          ) : (
+            <span className="muted">unavailable</span>
+          )}
+        </td>
+        <td style={{ ...tdStyle, fontFamily: 'var(--m5-font-mono)', fontSize: '12px' }}>
+          {mcu.captured_at ? new Date(mcu.captured_at).toLocaleString() : '—'}
+        </td>
+        <td style={tdStyle}>
+          <span style={{
+            display: 'inline-block',
+            background: chipBg,
+            color: chipFg,
+            border: `1px solid ${chipBorder}`,
+            padding: '2px 8px',
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+          }}>
+            {chipLabel}
+          </span>
+        </td>
+      </tr>
+
+      {expanded && (
+        <tr style={{ background: '#fafaf6' }}>
+          <td colSpan={6} style={{ padding: '12px 16px', borderBottom: '1px solid #f4f0e2' }}>
+            <div style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+              textTransform: 'uppercase', color: '#999', marginBottom: 8,
+            }}>
+              Flash history — {mcu.role.toUpperCase()}
+            </div>
+            {captures.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: '#888', fontStyle: 'italic' }}>
+                No captures yet — run <code>flash_provision.py {mcu.role}</code> to record one.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {captures.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => onView(l.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: 12, padding: '8px 10px', background: 'white',
+                      border: '1px solid #ece6d6', borderRadius: 6, fontSize: 12.5,
+                      cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: 'var(--m5-font-mono)' }}>
+                        {new Date(l.captured_at).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                        {l.line_count != null ? `${l.line_count} lines` : null}
+                        {l.byte_size != null && (
+                          <> · {formatBytes(l.byte_size) || `${l.byte_size} B`}</>
+                        )}
+                        {l.uploaded_by_email && (
+                          <> · uploaded by <strong>{l.uploaded_by_email}</strong></>
+                        )}
+                      </div>
+                    </div>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      fontSize: 12, color: '#555',
+                    }}>
+                      <Eye size={12} /> view log
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
