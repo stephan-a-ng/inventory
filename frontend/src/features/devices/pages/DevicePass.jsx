@@ -398,22 +398,61 @@ export default function DevicePass() {
                   {device.serial_number || '—'}
                 </button>
               </div>
-              <div className="field">
-                <div className="lbl">
-                  <span className="lbl-text">MAC</span>
-                  <span className={`copy-hint${copied === 'mac' ? ' is-on' : ''}`} aria-live="polite">
-                    {copied === 'mac' ? 'Copied' : 'Copy'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="mac mac-display is-copyable"
-                  onClick={() => copyToClipboard(device.mac_address, 'mac')}
-                  title="Click to copy"
-                >
-                  {device.mac_address}
-                </button>
-              </div>
+              {(() => {
+                const mcus = device.mcus || [];
+                // Multi-MCU device: stack one row per MCU with a small role
+                // label. Single-MCU products keep the original single-MAC
+                // layout so AEMS/BEMS rows don't grow extra chrome.
+                if (mcus.length > 1) {
+                  return (
+                    <div className="field">
+                      <div className="lbl">
+                        <span className="lbl-text">MACs</span>
+                        <span className={`copy-hint${copied === 'mac' ? ' is-on' : ''}`} aria-live="polite">
+                          {copied === 'mac' ? 'Copied' : 'Copy'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {mcus.map((m) => (
+                          <button
+                            key={m.role}
+                            type="button"
+                            className="mac mac-display is-copyable"
+                            onClick={() => copyToClipboard(m.wifi_sta_mac, 'mac')}
+                            title={`Click to copy ${m.role.toUpperCase()} MAC`}
+                            style={{ display: 'flex', alignItems: 'baseline', gap: 8, justifyContent: 'flex-start' }}
+                          >
+                            <span style={{
+                              fontSize: 9, opacity: 0.55, fontWeight: 700,
+                              letterSpacing: '0.08em', textTransform: 'uppercase',
+                              minWidth: 32,
+                            }}>{m.role}</span>
+                            <span>{m.wifi_sta_mac}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="field">
+                    <div className="lbl">
+                      <span className="lbl-text">MAC</span>
+                      <span className={`copy-hint${copied === 'mac' ? ' is-on' : ''}`} aria-live="polite">
+                        {copied === 'mac' ? 'Copied' : 'Copy'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="mac mac-display is-copyable"
+                      onClick={() => copyToClipboard(device.mac_address, 'mac')}
+                      title="Click to copy"
+                    >
+                      {device.mac_address}
+                    </button>
+                  </div>
+                );
+              })()}
               <div className="field">
                 <div className="lbl">Type</div>
                 <span className="type">{device.product_type}</span>
