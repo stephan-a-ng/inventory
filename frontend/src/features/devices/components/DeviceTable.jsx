@@ -359,17 +359,50 @@ export default function DeviceTable() {
                     )}
                   </td>
 
-                  {/* MAC address */}
+                  {/* MAC address(es) — show every reported MCU MAC for
+                      multi-MCU devices; otherwise just the canonical one. */}
                   <td style={tdStyle}>
-                    <span
-                      style={{
-                        fontFamily: 'var(--m5-font-mono)',
-                        fontSize: '12.5px',
-                        letterSpacing: '0.02em',
-                      }}
-                    >
-                      {device.mac_address}
-                    </span>
+                    {device.mcus && device.mcus.length > 1 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {device.mcus.map((m) => (
+                          <div
+                            key={m.role}
+                            style={{
+                              display: 'flex',
+                              gap: 6,
+                              alignItems: 'baseline',
+                              fontFamily: 'var(--m5-font-mono)',
+                              fontSize: '12.5px',
+                              letterSpacing: '0.02em',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 9,
+                                color: 'var(--m5-muted)',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.06em',
+                                minWidth: 28,
+                              }}
+                            >
+                              {m.role}
+                            </span>
+                            <span>{m.wifi_sta_mac}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span
+                        style={{
+                          fontFamily: 'var(--m5-font-mono)',
+                          fontSize: '12.5px',
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        {device.mac_address}
+                      </span>
+                    )}
                   </td>
 
                   {/* Type tag */}

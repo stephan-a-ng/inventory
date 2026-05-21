@@ -118,31 +118,46 @@ END $$;
 
 -- Default commissioning stages
 INSERT INTO commissioning_stages (product_type, name, "order", description) VALUES
-    ('AEMS', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('AEMS', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('AEMS', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('AEMS', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('AEMS', 'Calibration', 3, 'Sensor calibration and verification'),
     ('AEMS', 'QA', 4, 'Quality assurance testing'),
     ('AEMS', 'Staging', 5, 'Staged and ready for deployment'),
     ('AEMS', 'Deployed', 6, 'Deployed to production site'),
-    ('BEMS', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('BEMS', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('BEMS', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('BEMS', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('BEMS', 'Calibration', 3, 'Sensor calibration and verification'),
     ('BEMS', 'QA', 4, 'Quality assurance testing'),
     ('BEMS', 'Staging', 5, 'Staged and ready for deployment'),
     ('BEMS', 'Deployed', 6, 'Deployed to production site'),
-    ('EVSE', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('EVSE', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('EVSE', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('EVSE', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('EVSE', 'Calibration', 3, 'Sensor calibration and verification'),
     ('EVSE', 'QA', 4, 'Quality assurance testing'),
     ('EVSE', 'Staging', 5, 'Staged and ready for deployment'),
     ('EVSE', 'Deployed', 6, 'Deployed to production site'),
-    ('NETWORKING', 'Assembly', 1, 'Hardware assembly and initial inspection'),
-    ('NETWORKING', 'Firmware', 2, 'Firmware flashing and configuration'),
+    ('NETWORKING', 'Firmware', 1, 'Firmware flashing and configuration'),
+    ('NETWORKING', 'Assembly', 2, 'Hardware assembly and initial inspection'),
     ('NETWORKING', 'Calibration', 3, 'Sensor calibration and verification'),
     ('NETWORKING', 'QA', 4, 'Quality assurance testing'),
     ('NETWORKING', 'Staging', 5, 'Staged and ready for deployment'),
     ('NETWORKING', 'Deployed', 6, 'Deployed to production site')
 ON CONFLICT DO NOTHING;
+
+-- One-shot reorder: existing DBs were seeded with Assembly=1, Firmware=2.
+-- New ordering puts Firmware first. Run under a deferred (well, two-step
+-- via temporary negative) sequence so the (product_type, "order") UNIQUE
+-- constraint is never violated mid-swap.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM commissioning_stages WHERE name = 'Assembly' AND "order" = 1
+  ) THEN
+    UPDATE commissioning_stages SET "order" = -1 WHERE name = 'Assembly' AND "order" = 1;
+    UPDATE commissioning_stages SET "order" = 1  WHERE name = 'Firmware' AND "order" = 2;
+    UPDATE commissioning_stages SET "order" = 2  WHERE name = 'Assembly' AND "order" = -1;
+  END IF;
+END $$;
 
 -- New columns for device naming
 CREATE INDEX IF NOT EXISTS idx_devices_device_name ON devices(device_name);
@@ -487,3 +502,186 @@ CREATE TABLE IF NOT EXISTS build_sub_steps (
 );
 CREATE INDEX IF NOT EXISTS idx_build_sub_steps_parent
   ON build_sub_steps(build_step_id, sort_order, created_at);
+
+-- ============================================================================
+-- device_mcus: per-MCU identity + boot diagnostics
+-- ============================================================================
+--
+-- A device can have N MCUs (1 for simple AEMS/BEMS, 2 for current EVSE pairs,
+-- more for future products). Storing per-MCU data as a child table keeps the
+-- `devices` row narrow and scales without schema migrations when a product
+-- adds another microcontroller.
+--
+-- `role` is a free-form short string (e.g., "mcu1", "mcu2", "main") chosen by
+-- the firmware. It identifies the MCU's position in the device, not its model
+-- — that's `chip_type`. Unique per (device_id, role) so the same role can't
+-- be reported twice for one device.
+--
+-- All diagnostic columns are nullable: not every MCU reports every field, and
+-- early-product or partial-flash scenarios may carry only a subset.
+
+CREATE TABLE IF NOT EXISTS device_mcus (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+
+    -- identity (canonical lookup keys)
+    wifi_sta_mac TEXT NOT NULL,
+    bt_mac TEXT,
+
+    -- silicon
+    chip_type TEXT,
+    chip_revision INTEGER,
+
+    -- flash
+    flash_chip_id BIGINT,
+    flash_size BIGINT,
+    flash_mode TEXT,
+    flash_freq_mhz INTEGER,
+
+    -- psram
+    psram_size BIGINT,
+    psram_type TEXT,
+
+    -- security posture at flash time
+    secure_boot_enabled BOOLEAN,
+    flash_encryption_enabled BOOLEAN,
+
+    -- partition / firmware identity
+    active_partition TEXT,
+    project_name TEXT,
+    app_version TEXT,
+    elf_sha256 TEXT,
+    idf_version TEXT,
+    compile_date TEXT,
+    compile_time TEXT,
+
+    -- boot
+    reset_reason INTEGER,
+    initial_heap_free BIGINT,
+    initial_largest_free_block BIGINT,
+
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (device_id, role)
+);
+
+-- One MCU's MAC must be unique across the whole fleet. We lookup an incoming
+-- provisioning POST by any MCU's MAC, so a global unique constraint keeps
+-- accidental duplication impossible.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_device_mcus_mac
+    ON device_mcus (LOWER(wifi_sta_mac));
+
+-- Cross-cutting queries — "show me every mcu1 on firmware X."
+CREATE INDEX IF NOT EXISTS idx_device_mcus_role_fw
+    ON device_mcus (role, app_version);
+
+CREATE INDEX IF NOT EXISTS idx_device_mcus_device
+    ON device_mcus (device_id);
+
+-- ============================================================================
+-- api_keys: per-user API keys for headless CLIs (flash tools, CI scripts)
+-- ============================================================================
+--
+-- Replaces the single-shared-secret INVENTORY_API_KEY env var. Each operator
+-- runs `flash_provision.py` once, completes Google OAuth in the browser, and
+-- the server mints a long-lived key bound to their user record. Revocable
+-- per-row without redeploying.
+--
+-- The plaintext key is shown to the caller exactly once at mint time; only a
+-- SHA-256 hash is stored. `key_prefix` (first 8 chars) is kept un-hashed so
+-- we can index the lookup and so admins can identify a key in audit logs
+-- ("mfk_a3b4… last used 2 days ago") without exposing the secret.
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,             -- "flash-tool on stephan-mbp"
+    key_prefix TEXT NOT NULL,       -- first 8 chars, displayed; uniqueness for index
+    key_hash TEXT NOT NULL,         -- SHA-256 of the full plaintext key
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    UNIQUE (key_prefix)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id) WHERE revoked_at IS NULL;
+
+-- ============================================================================
+-- device_flash_logs + device_flash_log_lines
+-- ============================================================================
+--
+-- Serial-console captures from flash_provision.py, parsed into one row per
+-- ESP-IDF log line so the data is SQL-queryable ("every ERROR any MCU
+-- emitted in the last 24h", "tag=gfi_monitor across the fleet", "any line
+-- containing 'BROWNOUT'"). Each capture is also kept verbatim in
+-- raw_bytes so the parser can be re-run later if the line grammar evolves.
+--
+-- We never drop log bytes on a parse failure — any line that doesn't match
+-- the standard `[IWE] (boot_ms) tag: message` shape still becomes a row,
+-- just with NULL parsed columns and the original text in `raw`.
+
+CREATE TABLE IF NOT EXISTS device_flash_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    mcu_role TEXT NOT NULL,
+    byte_size BIGINT NOT NULL,
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Migrate the existing table shape: drop gcs_key (we no longer use object
+-- storage for log bodies) and add line_count + raw_bytes. Each ALTER is
+-- guarded by an existence check so re-running schema.sql on a fresh DB is
+-- a no-op.
+ALTER TABLE device_flash_logs DROP COLUMN IF EXISTS gcs_key;
+ALTER TABLE device_flash_logs ADD COLUMN IF NOT EXISTS line_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE device_flash_logs ADD COLUMN IF NOT EXISTS raw_bytes BYTEA;
+
+-- Newest-first for the device-detail UI's "Flash history" list.
+CREATE INDEX IF NOT EXISTS idx_device_flash_logs_device_time
+    ON device_flash_logs (device_id, captured_at DESC);
+
+CREATE TABLE IF NOT EXISTS device_flash_log_lines (
+    id BIGSERIAL PRIMARY KEY,
+    flash_log_id UUID NOT NULL REFERENCES device_flash_logs(id) ON DELETE CASCADE,
+    -- device_id + mcu_role + captured_at are denormalized from the parent
+    -- so cross-fleet queries don't pay a JOIN.
+    device_id UUID NOT NULL,
+    mcu_role TEXT NOT NULL,
+    line_no INTEGER NOT NULL,
+    boot_ms BIGINT,             -- "(12345)" — ms since chip reset; NULL when unparsed
+    level CHAR(1),              -- I/W/E/D; NULL when unparsed
+    tag TEXT,                   -- "main_mcu1", "gfi_monitor", ...; NULL when unparsed
+    message TEXT,               -- rest of the line after "tag: "; NULL when unparsed
+    raw TEXT NOT NULL,          -- the verbatim line, never NULL
+    captured_at TIMESTAMPTZ NOT NULL
+);
+
+-- Per-capture page-through ("show me lines 1..200 of this capture").
+CREATE INDEX IF NOT EXISTS idx_flash_log_lines_capture
+    ON device_flash_log_lines (flash_log_id, line_no);
+
+-- Cross-cutting "tag=X / level=E in the last 24h" queries.
+CREATE INDEX IF NOT EXISTS idx_flash_log_lines_tag_level
+    ON device_flash_log_lines (tag, level, captured_at DESC);
+
+-- Per-device history scans (the cross-cutting endpoint also accepts
+-- device_id as a filter; this index makes that path fast on its own).
+CREATE INDEX IF NOT EXISTS idx_flash_log_lines_device_time
+    ON device_flash_log_lines (device_id, captured_at DESC);
+
+-- Trigram GIN for cheap substring search on message. pg_trgm ships with
+-- core Postgres + every managed offering we'd realistically deploy to,
+-- but CREATE EXTENSION is guarded so DBs without it don't blow up on
+-- startup; the index just won't be built and `q=` queries fall back to
+-- a sequential LIKE scan.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_trgm') THEN
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE INDEX IF NOT EXISTS idx_flash_log_lines_message_trgm
+      ON device_flash_log_lines USING GIN (message gin_trgm_ops);
+  END IF;
+END $$;

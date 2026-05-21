@@ -64,8 +64,31 @@ class DeviceService:
         """
         params.extend([page_size, offset])
 
+        # Pre-fetch MCU summaries for every device on this page in one
+        # query so we can render every MAC in the list view without an
+        # N+1. Returned as {device_id: [{role, wifi_sta_mac}, ...]}.
         rows = await DatabasePool.fetch(query, *params)
-        return [dict(r) for r in rows], total
+        device_ids = [r["id"] for r in rows]
+        mcu_summary = {}
+        if device_ids:
+            mcu_rows = await DatabasePool.fetch(
+                """SELECT device_id, role, wifi_sta_mac
+                   FROM device_mcus
+                   WHERE device_id = ANY($1::uuid[])
+                   ORDER BY device_id, role""",
+                device_ids,
+            )
+            for m in mcu_rows:
+                mcu_summary.setdefault(m["device_id"], []).append(
+                    {"role": m["role"], "wifi_sta_mac": m["wifi_sta_mac"]}
+                )
+
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["mcus"] = mcu_summary.get(r["id"], [])
+            out.append(d)
+        return out, total
 
     @staticmethod
     async def get_device(device_id: UUID) -> Optional[dict]:
@@ -76,7 +99,15 @@ class DeviceService:
                WHERE d.id = $1""",
             device_id,
         )
-        return dict(row) if row else None
+        if not row:
+            return None
+        device = dict(row)
+        mcu_rows = await DatabasePool.fetch(
+            "SELECT * FROM device_mcus WHERE device_id = $1 ORDER BY role",
+            device_id,
+        )
+        device["mcus"] = [dict(m) for m in mcu_rows]
+        return device
 
     @staticmethod
     async def create_device(data: dict) -> dict:
@@ -278,3 +309,198 @@ class DeviceService:
             mac_address.upper(),
         )
         return dict(row) if row else None
+
+
+# ============================================================================
+# Provisioning (host flash-tool ↔ POST /api/devices/provision)
+# ============================================================================
+
+
+def _pick_canonical_mac(mcus: list[dict]) -> str:
+    """Pick the MAC that becomes devices.mac_address. For two-MCU EVSEs the
+    convention is to use MCU2's (the gateway) MAC since that's the unit
+    customers will see in BLE provisioning. For single-MCU devices, the
+    only available MAC wins.
+    """
+    for m in mcus:
+        if m.get("role") == "mcu2":
+            return m["wifi_sta_mac"].upper()
+    return mcus[0]["wifi_sta_mac"].upper()
+
+
+def _mcu_columns():
+    return [
+        "role", "wifi_sta_mac", "bt_mac",
+        "chip_type", "chip_revision",
+        "flash_chip_id", "flash_size", "flash_mode", "flash_freq_mhz",
+        "psram_size", "psram_type",
+        "secure_boot_enabled", "flash_encryption_enabled",
+        "active_partition", "project_name", "app_version", "elf_sha256",
+        "idf_version", "compile_date", "compile_time",
+        "reset_reason", "initial_heap_free", "initial_largest_free_block",
+    ]
+
+
+async def _insert_device_mcu(device_id: UUID, mcu: dict) -> dict:
+    """Insert one device_mcus row from a request-payload dict. Returns the
+    inserted row as a dict (matches DeviceMcuOut shape)."""
+    cols = _mcu_columns()
+    placeholders = ", ".join(f"${i + 2}" for i in range(len(cols)))
+    values = [
+        mcu.get("role"),
+        (mcu.get("wifi_sta_mac") or "").upper(),
+        (mcu.get("bt_mac") or "").upper() or None,
+        mcu.get("chip_type"),
+        mcu.get("chip_revision"),
+        mcu.get("flash_chip_id"),
+        mcu.get("flash_size"),
+        mcu.get("flash_mode"),
+        mcu.get("flash_freq_mhz"),
+        mcu.get("psram_size"),
+        mcu.get("psram_type"),
+        mcu.get("secure_boot_enabled"),
+        mcu.get("flash_encryption_enabled"),
+        mcu.get("active_partition"),
+        mcu.get("project_name"),
+        mcu.get("app_version"),
+        mcu.get("elf_sha256"),
+        mcu.get("idf_version"),
+        mcu.get("compile_date"),
+        mcu.get("compile_time"),
+        mcu.get("reset_reason"),
+        mcu.get("initial_heap_free"),
+        mcu.get("initial_largest_free_block"),
+    ]
+    row = await DatabasePool.fetchrow(
+        f"""INSERT INTO device_mcus (device_id, {", ".join(cols)})
+            VALUES ($1, {placeholders})
+            RETURNING *""",
+        device_id, *values,
+    )
+    return dict(row)
+
+
+async def _upsert_device_mcu(device_id: UUID, mcu: dict) -> dict:
+    """Update an existing (device_id, role) row in place, or insert if new."""
+    cols = _mcu_columns()
+    placeholders = ", ".join(f"${i + 2}" for i in range(len(cols)))
+    set_clause = ", ".join(
+        f"{c} = EXCLUDED.{c}" for c in cols if c not in ("role",)
+    )
+    values = [
+        mcu.get("role"),
+        (mcu.get("wifi_sta_mac") or "").upper(),
+        (mcu.get("bt_mac") or "").upper() or None,
+        mcu.get("chip_type"),
+        mcu.get("chip_revision"),
+        mcu.get("flash_chip_id"),
+        mcu.get("flash_size"),
+        mcu.get("flash_mode"),
+        mcu.get("flash_freq_mhz"),
+        mcu.get("psram_size"),
+        mcu.get("psram_type"),
+        mcu.get("secure_boot_enabled"),
+        mcu.get("flash_encryption_enabled"),
+        mcu.get("active_partition"),
+        mcu.get("project_name"),
+        mcu.get("app_version"),
+        mcu.get("elf_sha256"),
+        mcu.get("idf_version"),
+        mcu.get("compile_date"),
+        mcu.get("compile_time"),
+        mcu.get("reset_reason"),
+        mcu.get("initial_heap_free"),
+        mcu.get("initial_largest_free_block"),
+    ]
+    row = await DatabasePool.fetchrow(
+        f"""INSERT INTO device_mcus (device_id, {", ".join(cols)})
+            VALUES ($1, {placeholders})
+            ON CONFLICT (device_id, role)
+            DO UPDATE SET {set_clause}, updated_at = now()
+            RETURNING *""",
+        device_id, *values,
+    )
+    return dict(row)
+
+
+async def _list_device_mcus(device_id: UUID) -> list[dict]:
+    rows = await DatabasePool.fetch(
+        "SELECT * FROM device_mcus WHERE device_id = $1 ORDER BY role",
+        device_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def _find_device_by_any_mcu_mac(macs: list[str]) -> Optional[dict]:
+    """Lookup a device by any of the provided wifi_sta_mac values. Returns
+    the device row (with current_stage_name joined) or None.
+    """
+    if not macs:
+        return None
+    normalized = [m.upper() for m in macs]
+    row = await DatabasePool.fetchrow(
+        """SELECT d.*, cs.name AS current_stage_name
+           FROM devices d
+           JOIN device_mcus m ON m.device_id = d.id
+           LEFT JOIN commissioning_stages cs ON cs.id = d.current_stage_id
+           WHERE UPPER(m.wifi_sta_mac) = ANY($1::text[])
+           LIMIT 1""",
+        normalized,
+    )
+    return dict(row) if row else None
+
+
+async def provision_with_mcus(*, product_type: str, mcus: list[dict]) -> dict:
+    """Idempotent upsert for the host-flash-tool provision endpoint.
+
+    Lookup keyed on any MCU's wifi_sta_mac. If no existing device matches,
+    insert a new Device (auto-serial, auto-POP, first stage) and a
+    device_mcus row per payload entry — returns plaintext POP.
+
+    If a device matches: leave the parent Device row alone (don't churn
+    serial/stage/POP) and upsert each device_mcus row by (device_id, role).
+    Does NOT return POP — callers wanting it must use the audit-logged
+    GET /api/devices/{mac}/pop endpoint.
+    """
+    if not mcus:
+        raise ValueError("provision payload must include at least one MCU")
+
+    pt = product_type.value if hasattr(product_type, "value") else str(product_type)
+
+    macs = [m["wifi_sta_mac"] for m in mcus]
+    existing = await _find_device_by_any_mcu_mac(macs)
+
+    if existing is not None:
+        device_id = existing["id"]
+        for mcu in mcus:
+            await _upsert_device_mcu(device_id, mcu)
+        return {
+            "device_id": device_id,
+            "serial_number": existing.get("serial_number"),
+            "device_name": existing.get("device_name"),
+            "pop": None,
+            "pop_generated_at": existing.get("pop_generated_at"),
+            "created": False,
+            "mcus": await _list_device_mcus(device_id),
+        }
+
+    # Create path — use existing create_device for serial + POP + stage logic.
+    canonical_mac = _pick_canonical_mac(mcus)
+    device = await DeviceService.create_device({
+        "mac_address": canonical_mac,
+        "product_type": pt,
+    })
+
+    # Persist per-MCU rows.
+    for mcu in mcus:
+        await _insert_device_mcu(device["id"], mcu)
+
+    return {
+        "device_id": device["id"],
+        "serial_number": device.get("serial_number"),
+        "device_name": device.get("device_name"),
+        "pop": device.get("pop"),  # plaintext only on create
+        "pop_generated_at": device.get("pop_generated_at"),
+        "created": True,
+        "mcus": await _list_device_mcus(device["id"]),
+    }

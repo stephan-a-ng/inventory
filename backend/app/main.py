@@ -14,6 +14,7 @@ from app.features.auth import router as auth_router
 from app.features.build_steps import router as build_steps_router
 from app.features.devices import (
     firmware_router as device_firmware_router,
+    flash_log_router as device_flash_log_router,
     notes_router as device_notes_router,
     qr_router,
     router as devices_router,
@@ -61,6 +62,7 @@ app.include_router(devices_router)
 app.include_router(qr_router)
 app.include_router(device_notes_router)
 app.include_router(device_firmware_router)
+app.include_router(device_flash_log_router)
 app.include_router(audit_router)
 app.include_router(stages_router)
 app.include_router(subsystems_router)

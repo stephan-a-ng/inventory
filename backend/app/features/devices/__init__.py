@@ -5,13 +5,18 @@ Public surface:
 - `qr_router` — QR code sub-resource routes (separately mountable)
 - `notes_router` — per-device user-attributed notes
 - `firmware_router` — firmware-version vs latest-GitHub-release check
+- `flash_log_router` — flash-time serial console capture upload + retrieval
 - `DeviceService`, `CsvService` — used by tests and (rarely) cross-slice
 """
 from .csv_service import CsvService
 from .firmware_routes import router as firmware_router
+from .flash_log_routes import router as flash_log_router
 from .notes_routes import router as notes_router
 from .qr_routes import router as qr_router
 from .routes import router
 from .services import DeviceService
 
-__all__ = ["router", "qr_router", "notes_router", "firmware_router", "DeviceService", "CsvService"]
+__all__ = [
+    "router", "qr_router", "notes_router", "firmware_router",
+    "flash_log_router", "DeviceService", "CsvService",
+]
