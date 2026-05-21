@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Eye, ExternalLink, HelpCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, HelpCircle } from 'lucide-react';
 import useAuth from '@/features/auth/useAuth';
-import FlashLogViewer from '@/features/devices/components/FlashLogViewer';
+import InlineLogPanel from '@/features/devices/components/InlineLogPanel';
 
 const HELP_TEXT =
   'Compares each MCU\'s app_version against the latest release tag on the ' +
@@ -26,10 +26,8 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
   // Per-MCU flash captures, used both for the inline expandable history
   // under each row and for the "View" button that opens FlashLogViewer.
   const [flashLogs, setFlashLogs] = useState({ loading: true, logs: [] });
-  // Which MCU role's history is currently expanded (null = none).
+  // Which MCU role's log table is currently expanded (null = none).
   const [expandedRole, setExpandedRole] = useState(null);
-  // captureId currently rendered in the per-capture log viewer modal.
-  const [viewingCaptureId, setViewingCaptureId] = useState(null);
 
   const load = useCallback(async () => {
     if (!device?.product_type) return;
@@ -149,9 +147,9 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
                 mcu={m}
                 latest={latest}
                 captures={captures}
+                deviceId={device.id}
                 expanded={expanded}
                 onToggle={() => setExpandedRole(expanded ? null : m.role)}
-                onView={(captureId) => setViewingCaptureId(captureId)}
               />
             );
           })}
@@ -159,14 +157,6 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
       </table>
 
       <FlashedByLine audit={audit} />
-
-      {viewingCaptureId && (
-        <FlashLogViewer
-          captureId={viewingCaptureId}
-          deviceId={device.id}
-          onClose={() => setViewingCaptureId(null)}
-        />
-      )}
     </div>
   );
 }
@@ -227,7 +217,7 @@ function FlashedByLine({ audit }) {
   );
 }
 
-function McuFirmwareRow({ mcu, latest, captures, expanded, onToggle, onView }) {
+function McuFirmwareRow({ mcu, latest, captures, deviceId, expanded, onToggle }) {
   const current = mcu.app_version;
   const matches = isVersionMatch(current, latest.latest);
 
@@ -302,54 +292,11 @@ function McuFirmwareRow({ mcu, latest, captures, expanded, onToggle, onView }) {
       {expanded && (
         <tr style={{ background: '#fafaf6' }}>
           <td colSpan={6} style={{ padding: '12px 16px', borderBottom: '1px solid #f4f0e2' }}>
-            <div style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-              textTransform: 'uppercase', color: '#999', marginBottom: 8,
-            }}>
-              Flash history — {mcu.role.toUpperCase()}
-            </div>
-            {captures.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: '#888', fontStyle: 'italic' }}>
-                No captures yet — run <code>flash_provision.py {mcu.role}</code> to record one.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {captures.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => onView(l.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      gap: 12, padding: '8px 10px', background: 'white',
-                      border: '1px solid #ece6d6', borderRadius: 6, fontSize: 12.5,
-                      cursor: 'pointer', textAlign: 'left',
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontFamily: 'var(--m5-font-mono)' }}>
-                        {new Date(l.captured_at).toLocaleString()}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-                        {l.line_count != null ? `${l.line_count} lines` : null}
-                        {l.byte_size != null && (
-                          <> · {formatBytes(l.byte_size) || `${l.byte_size} B`}</>
-                        )}
-                        {l.uploaded_by_email && (
-                          <> · uploaded by <strong>{l.uploaded_by_email}</strong></>
-                        )}
-                      </div>
-                    </div>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      fontSize: 12, color: '#555',
-                    }}>
-                      <Eye size={12} /> view log
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <InlineLogPanel
+              deviceId={deviceId}
+              mcuRole={mcu.role}
+              captures={captures}
+            />
           </td>
         </tr>
       )}
