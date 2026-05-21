@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 
 import useAuth from '@/features/auth/useAuth';
+import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
 
 /**
  * Per-MCU identity + boot-diagnostics modal opened by the Info button
@@ -106,6 +107,14 @@ export default function DeviceInfoModal({ device, onClose }) {
             ['Created', device.created_at && new Date(device.created_at).toLocaleString()],
           ]} />
         </section>
+
+        {/* WiFi-commissioning PoP for EVSE — moved out of the commissioning
+            flow since it's hardware-config metadata, not a stage action. */}
+        {device.product_type === 'EVSE' && (
+          <section style={{ padding: '14px 20px', borderBottom: '1px solid #f1ecdc' }}>
+            <FirmwarePopCard device={device} />
+          </section>
+        )}
 
         {mcus.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: '#888' }}>

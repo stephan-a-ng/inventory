@@ -5,7 +5,6 @@ import AppSidebar from '@/shared/components/layout/AppSidebar';
 import DeviceForm from '@/features/devices/components/DeviceForm';
 import DeviceNotes from '@/features/devices/components/DeviceNotes';
 import DeviceInfoModal from '@/features/devices/components/DeviceInfoModal';
-import FirmwarePopCard from '@/features/devices/components/FirmwarePopCard';
 import FirmwareVersionCheckCard from '@/features/devices/components/FirmwareVersionCheckCard';
 import useAuth from '@/features/auth/useAuth';
 import { formatRelativeTime } from '@/features/audit/utils/relativeTime';
@@ -261,12 +260,6 @@ export default function DeviceDetail() {
 
   const isFirmwarePanel =
     activeStage && FIRMWARE_NAMES.has(activeStage.name.toLowerCase());
-  // CHARGER was renamed to EVSE; keep PoP card scoped to that product type.
-  const showFirmwarePopCard =
-    isFirmwarePanel &&
-    device.product_type === 'EVSE' &&
-    user?.role &&
-    user.role !== 'viewer';
   // Firmware-version check (vs. latest GitHub release) is wired up for the
   // two product types that have a tracked firmware repo.
   const showFirmwareVersionCheck =
@@ -402,35 +395,40 @@ export default function DeviceDetail() {
                 </div>
               </div>
 
-              {/* meta strip */}
-              <div className="meta-strip">
-                <div className="cell">
-                  <div className="l">Started</div>
-                  <div className="v mono">{formatDateTime(activeWindow?.entered_at)}</div>
-                  {activeWindow?.entered_at && activeStatus === 'current' && (
-                    <div className="sub">{formatRelativeTime(activeWindow.entered_at)}</div>
-                  )}
-                </div>
-                <div className="cell">
-                  <div className="l">{activeStatus === 'done' ? 'Finished' : 'Expected'}</div>
-                  <div className="v mono">
-                    {activeStatus === 'done'
-                      ? formatDateTime(activeWindow?.exited_at)
-                      : '—'}
-                  </div>
-                  {activeStatus === 'done' &&
-                    activeWindow?.entered_at &&
-                    activeWindow?.exited_at && (
-                      <div className="sub">
-                        {durationLabel(activeWindow.entered_at, activeWindow.exited_at)}
-                      </div>
+              {/* Stage meta strip — hidden on Firmware since the flash
+                  is effectively instantaneous and the owner appears
+                  inside FirmwareVersionCheckCard (alongside the per-MCU
+                  flashed-at timestamps). */}
+              {stageKey !== 'Firmware' && (
+                <div className="meta-strip">
+                  <div className="cell">
+                    <div className="l">Started</div>
+                    <div className="v mono">{formatDateTime(activeWindow?.entered_at)}</div>
+                    {activeWindow?.entered_at && activeStatus === 'current' && (
+                      <div className="sub">{formatRelativeTime(activeWindow.entered_at)}</div>
                     )}
+                  </div>
+                  <div className="cell">
+                    <div className="l">{activeStatus === 'done' ? 'Finished' : 'Expected'}</div>
+                    <div className="v mono">
+                      {activeStatus === 'done'
+                        ? formatDateTime(activeWindow?.exited_at)
+                        : '—'}
+                    </div>
+                    {activeStatus === 'done' &&
+                      activeWindow?.entered_at &&
+                      activeWindow?.exited_at && (
+                        <div className="sub">
+                          {durationLabel(activeWindow.entered_at, activeWindow.exited_at)}
+                        </div>
+                      )}
+                  </div>
+                  <div className="cell">
+                    <div className="l">Owner</div>
+                    <div className="v">{activeWindow?.owner || '—'}</div>
+                  </div>
                 </div>
-                <div className="cell">
-                  <div className="l">Owner</div>
-                  <div className="v">{activeWindow?.owner || '—'}</div>
-                </div>
-              </div>
+              )}
 
               {/* Per-user attributed notes feed. Shown on Assembly for now;
                   build-step level notes will arrive when authored steps grow
@@ -439,13 +437,15 @@ export default function DeviceDetail() {
                 <DeviceNotes deviceId={id} currentUser={user} />
               )}
 
-              {/* Firmware: per-MCU version-vs-GitHub-release check */}
+              {/* Firmware: per-MCU version-vs-GitHub-release check
+                  + most-recent-flash attribution from the audit log. */}
               {showFirmwareVersionCheck && (
-                <FirmwareVersionCheckCard device={device} />
+                <FirmwareVersionCheckCard device={device} audit={audit} />
               )}
 
-              {/* Firmware: per-device WiFi-commissioning PoP for EVSE devices */}
-              {showFirmwarePopCard && <FirmwarePopCard device={device} />}
+              {/* The WiFi-commissioning PoP has moved into the Info modal —
+                  it's hardware-config metadata that doesn't belong in the
+                  commissioning flow. */}
 
             </section>
           )}

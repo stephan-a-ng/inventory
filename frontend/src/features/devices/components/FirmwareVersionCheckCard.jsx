@@ -16,7 +16,7 @@ const HELP_TEXT =
  * Falls back to a single "no diagnostics captured" hint for devices that
  * have never been provisioned through flash_provision.py.
  */
-export default function FirmwareVersionCheckCard({ device }) {
+export default function FirmwareVersionCheckCard({ device, audit }) {
   const { authFetch } = useAuth();
 
   const [latest, setLatest] = useState({
@@ -116,6 +116,64 @@ export default function FirmwareVersionCheckCard({ device }) {
           ))}
         </tbody>
       </table>
+
+      <FlashedByLine audit={audit} />
+    </div>
+  );
+}
+
+/**
+ * Pulls the most recent provision/reflash entry out of the audit log and
+ * renders an "Owner" line — replaces the per-stage Owner cell on the
+ * Firmware stage, since both MCU flashes are realistically done by the
+ * same person and the audit log knows who.
+ */
+function FlashedByLine({ audit }) {
+  const entry = (audit || [])
+    .filter((e) => e.action === 'provisioned_from_flash_tool' || e.action === 'reflashed')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
+  if (!entry) return null;
+  const who = entry.user_name || entry.user_email || (
+    entry.new_value?.via === 'api_key_env'
+      ? 'service:flash-tool (env-var key)'
+      : '—'
+  );
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: '8px 0 0',
+        borderTop: '1px solid #f4f0e2',
+        fontSize: 12.5,
+        color: '#555',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 6,
+        alignItems: 'center',
+      }}
+    >
+      <span style={{ color: '#888' }}>Last flashed by</span>
+      <strong style={{ color: '#222' }}>{who}</strong>
+      <span style={{ color: '#888' }}>on</span>
+      <span style={{ fontFamily: 'var(--m5-font-mono)' }}>
+        {new Date(entry.created_at).toLocaleString()}
+      </span>
+      {entry.action === 'reflashed' && (
+        <span style={{
+          marginLeft: 6,
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          background: '#fef3c7',
+          color: '#92400e',
+          padding: '2px 6px',
+          borderRadius: 4,
+        }}>
+          reflash
+        </span>
+      )}
     </div>
   );
 }
