@@ -564,3 +564,31 @@ CREATE INDEX IF NOT EXISTS idx_device_mcus_role_fw
 
 CREATE INDEX IF NOT EXISTS idx_device_mcus_device
     ON device_mcus (device_id);
+
+-- ============================================================================
+-- api_keys: per-user API keys for headless CLIs (flash tools, CI scripts)
+-- ============================================================================
+--
+-- Replaces the single-shared-secret INVENTORY_API_KEY env var. Each operator
+-- runs `flash_provision.py` once, completes Google OAuth in the browser, and
+-- the server mints a long-lived key bound to their user record. Revocable
+-- per-row without redeploying.
+--
+-- The plaintext key is shown to the caller exactly once at mint time; only a
+-- SHA-256 hash is stored. `key_prefix` (first 8 chars) is kept un-hashed so
+-- we can index the lookup and so admins can identify a key in audit logs
+-- ("mfk_a3b4… last used 2 days ago") without exposing the secret.
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,             -- "flash-tool on stephan-mbp"
+    key_prefix TEXT NOT NULL,       -- first 8 chars, displayed; uniqueness for index
+    key_hash TEXT NOT NULL,         -- SHA-256 of the full plaintext key
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    UNIQUE (key_prefix)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id) WHERE revoked_at IS NULL;

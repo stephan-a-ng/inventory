@@ -1,55 +1,66 @@
 """API-key authentication for headless callers (flash tools, CI scripts).
 
-The existing Google OAuth + JWT cookie flow assumes a browser. The factory
-flash workflow runs from a developer's terminal and posts a device-provision
-payload with no browser in sight, so it needs a different auth path.
+Two key sources, tried in order:
 
-Current implementation: a single shared secret loaded from the
-`INVENTORY_API_KEY` env var, compared in constant time against the
-`X-API-Key` request header. This is intentionally minimal — the production
-upgrade path is a DB-backed `api_keys` table with per-operator records,
-last-used timestamps, and revocation. Tracked in docs/claude/SECURITY.md.
+1. **DB-backed keys** (preferred) — `api_keys` table, one row per operator,
+   minted via the CLI Google-OAuth flow (`POST /api/auth/cli-exchange`).
+   Revocable per-row; bumps `last_used_at` on each successful auth.
 
-Usage in a route:
+2. **Env var fallback** — `INVENTORY_API_KEY` shared secret. Useful for CI /
+   bootstrapping. When matched, the caller is a "service" identity (no user).
 
-    @router.post("/provision", dependencies=[Depends(require_api_key)])
-    async def provision_device(...):
-        ...
+Returns a user-shaped dict either way so downstream code can read `["role"]`,
+`["email"]`, etc. The DB path returns the owning user's identity; the env-var
+path returns a synthetic service user.
 """
 import hmac
 import os
 
 from fastapi import HTTPException, Request
 
+from .api_key_service import lookup_active_key
 
-def _expected_key() -> str | None:
-    """Return the configured API key, or None if not set."""
+
+def _env_key() -> str | None:
+    """The shared INVENTORY_API_KEY env var, or None if unset."""
     val = os.getenv("INVENTORY_API_KEY", "").strip()
     return val or None
 
 
 async def require_api_key(request: Request) -> dict:
     """FastAPI dependency. Raises 401 unless the request carries a valid
-    `X-API-Key` matching `INVENTORY_API_KEY`. Returns a synthetic service
-    user dict so downstream code that expects `user["id"]` / `user["role"]`
-    still works.
+    `X-API-Key` — either a per-operator DB key or the shared env-var key.
 
-    503 if no key is configured server-side — fails closed rather than
-    silently allowing every caller.
+    Returns a user-shaped dict (`{id, email, name, role, auth}`) so route
+    handlers and audit logging can attribute the call.
     """
-    expected = _expected_key()
-    if expected is None:
-        raise HTTPException(
-            status_code=503,
-            detail="INVENTORY_API_KEY not configured on the server",
-        )
     provided = request.headers.get("x-api-key", "").strip()
-    if not provided or not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
-    return {
-        "id": None,
-        "email": "service:flash-tool",
-        "name": "flash-tool",
-        "role": "technician",
-        "auth": "api_key",
-    }
+    if not provided:
+        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+
+    # 1. DB lookup (per-operator key). Constant-time hash compare happens
+    #    inside lookup_active_key; that call also bumps last_used_at.
+    row = await lookup_active_key(provided)
+    if row is not None:
+        return {
+            "id": row["user_id"],
+            "email": row.get("email") or "service:api-key",
+            "name": row.get("user_name") or row.get("name") or "api-key",
+            "role": row.get("role") or "technician",
+            "auth": "api_key_db",
+            "api_key_id": row["id"],
+            "api_key_name": row["name"],
+        }
+
+    # 2. Env-var fallback (shared bootstrap key).
+    env = _env_key()
+    if env is not None and hmac.compare_digest(provided, env):
+        return {
+            "id": None,
+            "email": "service:flash-tool",
+            "name": "flash-tool",
+            "role": "technician",
+            "auth": "api_key_env",
+        }
+
+    raise HTTPException(status_code=401, detail="Invalid X-API-Key")

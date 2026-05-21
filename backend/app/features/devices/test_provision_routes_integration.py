@@ -87,14 +87,17 @@ async def test_provision_rejects_wrong_api_key(client, clean_db, monkeypatch):
     assert r.status_code == 401
 
 
-async def test_provision_503_when_server_has_no_api_key(client, clean_db, monkeypatch):
+async def test_provision_401_when_env_var_unset_and_key_unknown(client, clean_db, monkeypatch):
+    """With no INVENTORY_API_KEY env var and a key that doesn't match any
+    DB row, the request is unauthenticated (401), not "server misconfigured"
+    (503). DB-backed keys remain the canonical path."""
     monkeypatch.delenv("INVENTORY_API_KEY", raising=False)
     r = await client.post(
         "/api/devices/provision",
         json={"product_type": "EVSE", "mcus": [_full_mcu("mcu1", "AA:BB:CC:00:00:01")]},
-        headers={"X-API-Key": "anything"},
+        headers={"X-API-Key": "mfk_definitely-not-in-the-db"},
     )
-    assert r.status_code == 503
+    assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------
