@@ -26,8 +26,10 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
   // Per-MCU flash captures, used both for the inline expandable history
   // under each row and for the "View" button that opens FlashLogViewer.
   const [flashLogs, setFlashLogs] = useState({ loading: true, logs: [] });
-  // Which MCU role's log table is currently expanded (null = none).
-  const [expandedRole, setExpandedRole] = useState(null);
+  // Set of MCU roles currently expanded. Multiple rows can be open at
+  // once so the operator can compare two captures side-by-side without
+  // losing scroll state.
+  const [expandedRoles, setExpandedRoles] = useState(() => new Set());
 
   const load = useCallback(async () => {
     if (!device?.product_type) return;
@@ -140,7 +142,7 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
         <tbody>
           {mcus.map((m) => {
             const captures = logsByRole[m.role] || [];
-            const expanded = expandedRole === m.role;
+            const expanded = expandedRoles.has(m.role);
             return (
               <McuFirmwareRow
                 key={m.role}
@@ -149,7 +151,11 @@ export default function FirmwareVersionCheckCard({ device, audit }) {
                 captures={captures}
                 deviceId={device.id}
                 expanded={expanded}
-                onToggle={() => setExpandedRole(expanded ? null : m.role)}
+                onToggle={() => setExpandedRoles((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(m.role)) next.delete(m.role); else next.add(m.role);
+                  return next;
+                })}
               />
             );
           })}
